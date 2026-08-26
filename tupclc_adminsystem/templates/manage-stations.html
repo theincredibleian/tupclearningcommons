@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Manage Stations | TUPC Learning Commons Management</title>
+</head>
+
+<body>
+    <!-- NAVIGATION BAR -->
+    <div class="navbar">
+        <div class="navbar-content">
+            <div class="navbar-logo">
+                <img src="{{ url_for('static', filename='tuplogo.png') }}" alt="Logo">
+            </div>
+            <div>
+                <h4>Technological University of the Philippines - Cavite</h4>
+                <h2>Learning Commons Management</h2>
+            </div>
+        </div>
+        <nav class="menu">
+            <a href="/dashboard" class="navbar-menu-btn">Home</a>
+            <a href="/manage-stations" class="navbar-menu-btn active">Learning Commons</a>
+            <a href="/scheduling" class="navbar-menu-btn">Scheduling</a>
+            <a href="/login-management" class="navbar-menu-btn">Login Management</a>
+            <a href="#" class="navbar-menu-btn">Account</a>
+        </nav>
+    </div>
+
+<!-- ==================================================== -->
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content" style="gap: 1rem;">
+
+        <!-- LEFT PANEL -->
+        <div class="manage-panel" style="display:flex; align-items:center; gap:1rem;">
+            <div class="status-card" style="flex:1;">
+                <h1>Manage Learning Stations</h1>
+
+            <select id="manage-location-select" class="manage-location-select">
+                <!-- Populated live from /api/locations -->
+            </select>
+
+        <!-- TABLE -->
+        <table class="station-table">
+
+            <thead>
+                <tr>
+                    <th>Station No.</th>
+                    <th>Status</th>
+                    <th>Open/Closed</th>
+                    <th></th>
+                </tr>
+
+            </thead>
+
+            <tbody id="station-table-body">
+                <!-- Populated live from /api/manage-stations -->
+            </tbody>
+
+        </table>
+
+        <!-- FOOTER BUTTON -->
+        <div class="add-button-container">
+            <button class="gray-btn add-btn" id="btn-add-station" type="button">
+                Add Learning Station
+            </button>
+            <button class="gray-btn add-btn" id="btn-manage-locations" type="button">
+                Manage Locations
+            </button>
+        </div>
+    </div>
+    </div>
+
+<!-- ==================================================== -->
+
+    <!-- REMOVE STATION CONFIRMATION OVERLAY -->
+    <div class="overlay-backdrop" id="remove-station-overlay">
+        <div class="overlay-box">
+            <h3>Remove Learning Station</h3>
+            <p id="remove-station-message">Are you sure you want to remove this learning station? This cannot be undone.</p>
+            <div class="overlay-buttons">
+                <button class="gray-btn" id="btn-cancel-remove-station" type="button">Cancel</button>
+                <button class="red-btn" id="btn-confirm-remove-station" type="button">Remove</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MANAGE LOCATIONS OVERLAY -->
+    <div class="overlay-backdrop" id="manage-locations-overlay">
+        <div class="overlay-box">
+            <h3>Manage Locations</h3>
+
+            <table class="station-table">
+                <thead>
+                    <tr>
+                        <th>Location</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="locations-table-body">
+                    <!-- Populated live from /api/locations -->
+                </tbody>
+            </table>
+
+            <div class="add-location-row">
+                <input type="text" id="new-location-input" placeholder="New location name..." autocomplete="off">
+                <button class="gray-btn small-btn" id="btn-add-location" type="button">Add</button>
+            </div>
+
+            <div class="overlay-buttons">
+                <button class="gray-btn" id="btn-close-locations-overlay" type="button">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- REMOVE LOCATION CONFIRMATION OVERLAY (nested inside Manage Locations) -->
+    <div class="overlay-backdrop" id="remove-location-overlay">
+        <div class="overlay-box">
+            <h3>Remove Location</h3>
+            <p id="remove-location-message">Are you sure you want to remove this location? All of its learning stations will also be removed. This cannot be undone.</p>
+            <div class="overlay-buttons">
+                <button class="gray-btn" id="btn-cancel-remove-location" type="button">Cancel</button>
+                <button class="red-btn" id="btn-confirm-remove-location" type="button">Remove</button>
+            </div>
+        </div>
+    </div>
+
+<!-- ==================================================== -->
+
+    <script>
+
+        // -------------------------------------------------------
+        // STATE
+        // -------------------------------------------------------
+
+        let stationsData = [];
+        let currentLocation = "";
+        let pendingRemoveStation = null;
+        let pendingRemoveLocation = null;
+
+        const locationSelect = document.getElementById("manage-location-select");
+        const tableBody = document.getElementById("station-table-body");
+
+        const statusTextClass = {
+            vacant:   "vacant-text",
+            occupied: "occupied-text",
+            reserved: "reserved-text",
+            closed:   "closed-text",
+        };
+
+        const statusLabel = {
+            vacant:   "Vacant",
+            occupied: "Occupied",
+            reserved: "Reserved",
+            closed:   "Closed",
+        };
+
+        // -------------------------------------------------------
+        // STATIONS - fetch + render
+        // Calls /api/manage-stations, which reports each station's
+        // real-time status (vacant/occupied/reserved/closed) the same
+        // way the dashboard's Availability Status panel does, plus
+        // whether it has been manually closed via the Close button.
+        // -------------------------------------------------------
+
+        async function fetchStations() {
+            if (!currentLocation) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/manage-stations?location=${encodeURIComponent(currentLocation)}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    console.error("Failed to load stations:", result.message);
+                    return;
+                }
+
+                stationsData = result.stations;
+                renderStationTable();
+            } catch (err) {
+                console.error("Could not reach /api/manage-stations:", err);
+            }
+        }
+
+        function renderStationTable() {
+            if (!tableBody) {
+                return;
+            }
+            tableBody.innerHTML = "";
+
+            if (stationsData.length === 0) {
+                const emptyRow = document.createElement("tr");
+                const emptyCell = document.createElement("td");
+                emptyCell.colSpan = 4;
+                emptyCell.style.textAlign = "center";
+                emptyCell.style.color = "#777";
+                emptyCell.textContent = "No learning stations at this location yet.";
+                emptyRow.appendChild(emptyCell);
+                tableBody.appendChild(emptyRow);
+                return;
+            }
+
+            stationsData.forEach(function (station) {
+                const row = document.createElement("tr");
+
+                const nameCell = document.createElement("td");
+                nameCell.textContent = station.station_no;
+
+                const statusCell = document.createElement("td");
+                statusCell.className = statusTextClass[station.status] || "vacant-text";
+                statusCell.textContent = statusLabel[station.status] || station.status;
+
+                const openCell = document.createElement("td");
+                openCell.className = station.is_closed ? "closed-text" : "open-text";
+                openCell.textContent = station.is_closed ? "Closed" : "Open";
+
+                const buttonsCell = document.createElement("td");
+                buttonsCell.className = "table-buttons";
+
+                const closeBtn = document.createElement("button");
+                closeBtn.className = "gray-btn table-btn";
+                closeBtn.type = "button";
+                closeBtn.textContent = station.is_closed ? "Reopen" : "Close";
+                closeBtn.addEventListener("click", function () {
+                    toggleStationClosed(station.station_no, !station.is_closed);
+                });
+
+                const removeBtn = document.createElement("button");
+                removeBtn.className = "red-btn table-btn";
+                removeBtn.type = "button";
+                removeBtn.textContent = "Remove";
+                removeBtn.addEventListener("click", function () {
+                    openRemoveStationConfirm(station.station_no);
+                });
+
+                buttonsCell.appendChild(closeBtn);
+                buttonsCell.appendChild(removeBtn);
+
+                row.appendChild(nameCell);
+                row.appendChild(statusCell);
+                row.appendChild(openCell);
+                row.appendChild(buttonsCell);
+
+                tableBody.appendChild(row);
+            });
+        }
+
+        // -------------------------------------------------------
+        // CLOSE / REOPEN A STATION
+        // Closing a station marks it unavailable for reservations and
+        // makes it show "Closed" on the dashboard's Availability
+        // Status panel, same as any other station status.
+        // -------------------------------------------------------
+
+        async function toggleStationClosed(stationNo, closed) {
+            try {
+                const response = await fetch("/api/stations/close", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        station_no: stationNo,
+                        location: currentLocation,
+                        closed: closed,
+                    }),
+                });
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert(result.message || "Could not update that station.");
+                    return;
+                }
+
+                fetchStations();
+            } catch (err) {
+                console.error("Could not reach /api/stations/close:", err);
+                alert("Could not connect to the server. Please try again.");
+            }
+        }
+
+        // -------------------------------------------------------
+        // ADD LEARNING STATION
+        // Appends a new station to the bottom of the current
+        // location's station list.
+        // -------------------------------------------------------
+
+        const btnAddStation = document.getElementById("btn-add-station");
+        if (btnAddStation) {
+            btnAddStation.addEventListener("click", async function () {
+                if (!currentLocation) {
+                    return;
+                }
+                try {
+                    const response = await fetch("/api/stations", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ location: currentLocation }),
+                    });
+                    const result = await response.json();
+
+                    if (!result.success) {
+                        alert(result.message || "Could not add a new learning station.");
+                        return;
+                    }
+
+                    fetchStations();
+                } catch (err) {
+                    console.error("Could not reach /api/stations:", err);
+                    alert("Could not connect to the server. Please try again.");
+                }
+            });
+        }
+
+        // -------------------------------------------------------
+        // REMOVE STATION - confirmation overlay
+        // -------------------------------------------------------
+
+        const removeStationOverlay = document.getElementById("remove-station-overlay");
+        const removeStationMessage = document.getElementById("remove-station-message");
+
+        function openRemoveStationConfirm(stationNo) {
+            pendingRemoveStation = stationNo;
+            if (removeStationMessage) {
+                removeStationMessage.textContent =
+                    `Are you sure you want to remove ${stationNo}? This cannot be undone.`;
+            }
+            if (removeStationOverlay) {
+                removeStationOverlay.classList.add("show");
+            }
+        }
+
+        function closeRemoveStationConfirm() {
+            pendingRemoveStation = null;
+            if (removeStationOverlay) {
+                removeStationOverlay.classList.remove("show");
+            }
+        }
+
+        const btnCancelRemoveStation = document.getElementById("btn-cancel-remove-station");
+        if (btnCancelRemoveStation) {
+            btnCancelRemoveStation.addEventListener("click", closeRemoveStationConfirm);
+        }
+
+        const btnConfirmRemoveStation = document.getElementById("btn-confirm-remove-station");
+        if (btnConfirmRemoveStation) {
+            btnConfirmRemoveStation.addEventListener("click", async function () {
+                if (!pendingRemoveStation) {
+                    return;
+                }
+                const stationNo = pendingRemoveStation;
+                try {
+                    const response = await fetch("/api/stations", {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ station_no: stationNo, location: currentLocation }),
+                    });
+                    const result = await response.json();
+
+                    if (!result.success) {
+                        alert(result.message || "Could not remove that learning station.");
+                    }
+                } catch (err) {
+                    console.error("Could not reach /api/stations:", err);
+                    alert("Could not connect to the server. Please try again.");
+                } finally {
+                    closeRemoveStationConfirm();
+                    fetchStations();
+                }
+            });
+        }
+
+        // -------------------------------------------------------
+        // LOCATIONS - fetch + render (dropdown + Manage Locations overlay)
+        // -------------------------------------------------------
+
+        async function fetchLocations() {
+            try {
+                const response = await fetch("/api/locations");
+                const result = await response.json();
+
+                if (!result.success) {
+                    console.error("Failed to load locations:", result.message);
+                    return;
+                }
+
+                renderLocationSelect(result.locations);
+                renderLocationsOverlayTable(result.locations);
+            } catch (err) {
+                console.error("Could not reach /api/locations:", err);
+            }
+        }
+
+        function renderLocationSelect(locations) {
+            if (!locationSelect) {
+                return;
+            }
+            const previousValue = locationSelect.value;
+            locationSelect.innerHTML = "";
+
+            locations.forEach(function (name) {
+                const option = document.createElement("option");
+                option.value = name;
+                option.textContent = name;
+                locationSelect.appendChild(option);
+            });
+
+            if (locations.includes(previousValue)) {
+                locationSelect.value = previousValue;
+            }
+            currentLocation = locationSelect.value || (locations[0] || "");
+        }
+
+        function renderLocationsOverlayTable(locations) {
+            const body = document.getElementById("locations-table-body");
+            if (!body) {
+                return;
+            }
+            body.innerHTML = "";
+
+            locations.forEach(function (name) {
+                const row = document.createElement("tr");
+
+                const nameCell = document.createElement("td");
+                nameCell.textContent = name;
+
+                const buttonsCell = document.createElement("td");
+                buttonsCell.className = "table-buttons";
+
+                const removeBtn = document.createElement("button");
+                removeBtn.className = "red-btn table-btn";
+                removeBtn.type = "button";
+                removeBtn.textContent = "Remove";
+                removeBtn.addEventListener("click", function () {
+                    openRemoveLocationConfirm(name);
+                });
+
+                buttonsCell.appendChild(removeBtn);
+                row.appendChild(nameCell);
+                row.appendChild(buttonsCell);
+                body.appendChild(row);
+            });
+        }
+
+        // -------------------------------------------------------
+        // MANAGE LOCATIONS OVERLAY - open/close
+        // -------------------------------------------------------
+
+        const manageLocationsOverlay = document.getElementById("manage-locations-overlay");
+
+        const btnManageLocations = document.getElementById("btn-manage-locations");
+        if (btnManageLocations) {
+            btnManageLocations.addEventListener("click", function () {
+                fetchLocations();
+                if (manageLocationsOverlay) {
+                    manageLocationsOverlay.classList.add("show");
+                }
+            });
+        }
+
+        const btnCloseLocationsOverlay = document.getElementById("btn-close-locations-overlay");
+        if (btnCloseLocationsOverlay) {
+            btnCloseLocationsOverlay.addEventListener("click", function () {
+                if (manageLocationsOverlay) {
+                    manageLocationsOverlay.classList.remove("show");
+                }
+                // The active location list may have changed while the
+                // overlay was open (added/removed) - refresh the page's
+                // dropdown + station table to match.
+                fetchLocations();
+                fetchStations();
+            });
+        }
+
+        // -------------------------------------------------------
+        // ADD LOCATION
+        // -------------------------------------------------------
+
+        const btnAddLocation = document.getElementById("btn-add-location");
+        const newLocationInput = document.getElementById("new-location-input");
+
+        if (btnAddLocation) {
+            btnAddLocation.addEventListener("click", async function () {
+                const name = newLocationInput ? newLocationInput.value.trim() : "";
+                if (!name) {
+                    return;
+                }
+                try {
+                    const response = await fetch("/api/locations", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: name }),
+                    });
+                    const result = await response.json();
+
+                    if (!result.success) {
+                        alert(result.message || "Could not add that location.");
+                        return;
+                    }
+
+                    if (newLocationInput) {
+                        newLocationInput.value = "";
+                    }
+                    fetchLocations();
+                } catch (err) {
+                    console.error("Could not reach /api/locations:", err);
+                    alert("Could not connect to the server. Please try again.");
+                }
+            });
+        }
+
+        // -------------------------------------------------------
+        // REMOVE LOCATION - confirmation overlay (nested)
+        // -------------------------------------------------------
+
+        const removeLocationOverlay = document.getElementById("remove-location-overlay");
+        const removeLocationMessage = document.getElementById("remove-location-message");
+
+        function openRemoveLocationConfirm(name) {
+            pendingRemoveLocation = name;
+            if (removeLocationMessage) {
+                removeLocationMessage.textContent =
+                    `Are you sure you want to remove "${name}"? All of its learning stations will also be removed. This cannot be undone.`;
+            }
+            if (removeLocationOverlay) {
+                removeLocationOverlay.classList.add("show");
+            }
+        }
+
+        function closeRemoveLocationConfirm() {
+            pendingRemoveLocation = null;
+            if (removeLocationOverlay) {
+                removeLocationOverlay.classList.remove("show");
+            }
+        }
+
+        const btnCancelRemoveLocation = document.getElementById("btn-cancel-remove-location");
+        if (btnCancelRemoveLocation) {
+            btnCancelRemoveLocation.addEventListener("click", closeRemoveLocationConfirm);
+        }
+
+        const btnConfirmRemoveLocation = document.getElementById("btn-confirm-remove-location");
+        if (btnConfirmRemoveLocation) {
+            btnConfirmRemoveLocation.addEventListener("click", async function () {
+                if (!pendingRemoveLocation) {
+                    return;
+                }
+                const name = pendingRemoveLocation;
+                try {
+                    const response = await fetch("/api/locations", {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: name }),
+                    });
+                    const result = await response.json();
+
+                    if (!result.success) {
+                        alert(result.message || "Could not remove that location.");
+                    }
+                } catch (err) {
+                    console.error("Could not reach /api/locations:", err);
+                    alert("Could not connect to the server. Please try again.");
+                } finally {
+                    closeRemoveLocationConfirm();
+                    fetchLocations();
+                    fetchStations();
+                }
+            });
+        }
+
+        // -------------------------------------------------------
+        // INIT
+        // -------------------------------------------------------
+
+        (async function init() {
+            await fetchLocations();
+            await fetchStations();
+        })();
+
+        setInterval(fetchStations, 15000);  // refresh live status every 15 seconds
+
+        if (locationSelect) {
+            locationSelect.addEventListener("change", fetchStations);
+        }
+
+    </script>
+</body>
+</html>

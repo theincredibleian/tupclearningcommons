@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Scheduling | TUPC Learning Commons Management</title>
+</head>
+
+<body>
+    <!-- NAVIGATION BAR -->
+    <div class="navbar">
+        <div class="navbar-content">
+            <div class="navbar-logo">
+                <img src="{{ url_for('static', filename='tuplogo.png') }}" alt="Logo">
+            </div>
+            <div>
+                <h4>Technological University of the Philippines - Cavite</h4>
+                <h2>Learning Commons Management</h2>
+            </div>
+        </div>
+        <nav class="menu">
+            <a href="/dashboard" class="navbar-menu-btn">Home</a>
+            <a href="/manage-stations" class="navbar-menu-btn">Learning Commons</a>
+            <a href="/scheduling" class="navbar-menu-btn active">Scheduling</a>
+            <a href="/login-management" class="navbar-menu-btn">Login Management</a>
+            <a href="#" class="navbar-menu-btn">Account</a>
+        </nav>
+    </div>
+
+<!-- ==================================================== -->
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content" style="gap: 1rem;">
+
+        <!-- LEFT PANEL -->
+        <div class="schedule-card">
+            <div class="status-card">
+                <h1>Upcoming Schedules</h1>
+
+                 <!-- FILTERS -->
+            <div class="schedule-filters">
+
+                <select id="calendar-month-select" aria-label="Month"></select>
+
+                <select id="calendar-location-select" aria-label="Location"></select>
+
+            </div>
+
+<!-- CALENDAR -->
+            <table class="calendar">
+
+                <thead>
+                    <tr>
+                        <th>Sun</th>
+                        <th>Mon</th>
+                        <th>Tue</th>
+                        <th>Wed</th>
+                        <th>Thurs</th>
+                        <th>Fri</th>
+                        <th>Sat</th>
+                    </tr>
+                </thead>
+
+                <tbody id="calendar-body">
+                    <!-- Populated live by buildCalendarGrid() based on the
+                         selected month/location and today's real date. -->
+                </tbody>
+
+            </table>
+
+        </div>
+        </div>
+
+<!-- ==================================================== -->
+
+              <!-- RIGHT PANEL -->
+        <div class="right-panel">
+
+            <!-- FALSE APPOINTMENTS -->
+            <div class="card">
+                <h2>False Appointments</h2>
+
+            <div id="scheduling-message" class="confirmation-banner" style="display:none;"></div>
+
+            <table class="false-table">
+
+                <thead>
+
+                    <tr>
+                        <th>Name</th>
+                        <th>GSFE Email</th>
+                        <th>Strikes</th>
+                        <th></th>
+                    </tr>
+
+                </thead>
+
+                <tbody id="false-appointments-body">
+                    <!-- Populated live by fetchFalseAppointments() from
+                         /api/false-appointments. A "false appointment" is a
+                         reservation never verified (checked in) within
+                         15 minutes of its start time. -->
+                </tbody>
+
+            </table>
+            
+            </div>
+
+        </div>
+    </div>
+
+<!-- ==================================================== -->
+
+    <script>
+
+        // =========================================================
+        // SCHEDULING PAGE
+        // Two live pieces on this page:
+        //   1) The calendar (left panel) - built for whatever month is
+        //      selected, using the real current date to mark today and
+        //      weekends, and populated from /api/calendar-status with
+        //      each date's reserved/occupied appointments. Reservations
+        //      starting within the next hour are printed directly on
+        //      their date's cell as "(station_no) start_time - end_time".
+        //   2) The False Appointments table (right panel) - reservations
+        //      nobody checked in within 15 minutes of start_time, pulled
+        //      from /api/false-appointments, with Restrict/Unrestrict
+        //      wired to /api/restrict and /api/unrestrict.
+        // =========================================================
+
+        const MONTHS_AHEAD = 5;             // dropdown shows this month + next 5
+        const CALENDAR_POLL_MS = 20000;      // refresh calendar every 20s
+        const FALSE_APPT_POLL_MS = 30000;    // refresh false-appointments table every 30s
+
+        const MONTH_NAMES = [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December",
+        ];
+
+        const monthSelect = document.getElementById("calendar-month-select");
+        const locationSelect = document.getElementById("calendar-location-select");
+        const calendarBody = document.getElementById("calendar-body");
+        const falseApptBody = document.getElementById("false-appointments-body");
+        const schedulingMessageEl = document.getElementById("scheduling-message");
+
+        let selectedYear = null;
+        let selectedMonth = null;
+        let calendarDaysData = {};   // keyed by "YYYY-MM-DD" -> {has_reserved, has_occupied, upcoming:[...]}
+        let availableLocations = [];
+
+        // -------------------------------------------------------
+        // MESSAGE BANNER (restrict/unrestrict feedback)
+        // status: true = success, false = error, null = pending/info
+        // -------------------------------------------------------
+
+        function showSchedulingMessage(status, text) {
+            if (!schedulingMessageEl) {
+                return;
+            }
+            schedulingMessageEl.textContent = text;
+            schedulingMessageEl.classList.remove("confirmation-success", "confirmation-error", "confirmation-pending");
+            if (status === true) {
+                schedulingMessageEl.classList.add("confirmation-success");
+            } else if (status === false) {
+                schedulingMessageEl.classList.add("confirmation-error");
+            } else {
+                schedulingMessageEl.classList.add("confirmation-pending");
+            }
+            schedulingMessageEl.style.display = "block";
+        }
+
+        // -------------------------------------------------------
+        // MONTH DROPDOWN - built from the real current date, not
+        // hardcoded, so it always starts at "this month".
+        // -------------------------------------------------------
+
+        function populateMonthOptions() {
+            const now = new Date();
+            monthSelect.innerHTML = "";
+
+            for (let i = 0; i <= MONTHS_AHEAD; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+                const opt = document.createElement("option");
+                opt.value = `${d.getFullYear()}-${d.getMonth() + 1}`;
+                opt.textContent = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+                monthSelect.appendChild(opt);
+            }
+
+            selectedYear = now.getFullYear();
+            selectedMonth = now.getMonth() + 1;
+            monthSelect.value = `${selectedYear}-${selectedMonth}`;
+        }
+
+        // -------------------------------------------------------
+        // LOCATION DROPDOWN - pulled from /api/locations (same source
+        // the rest of the system uses), instead of a hardcoded option.
+        // -------------------------------------------------------
+
+        async function populateLocationOptions() {
+            try {
+                const response = await fetch("/api/locations");
+                const result = await response.json();
+
+                if (!result.success) {
+                    console.error("Failed to load locations:", result.message);
+                    return;
+                }
+
+                availableLocations = result.locations || [];
+                const previousValue = locationSelect.value;
+                locationSelect.innerHTML = "";
+
+                availableLocations.forEach(function (loc) {
+                    const opt = document.createElement("option");
+                    opt.value = loc;
+                    opt.textContent = loc;
+                    locationSelect.appendChild(opt);
+                });
+
+                if (previousValue && availableLocations.includes(previousValue)) {
+                    locationSelect.value = previousValue;
+                }
+            } catch (err) {
+                console.error("Could not reach /api/locations:", err);
+            }
+        }
+
+        // -------------------------------------------------------
+        // CALENDAR GRID
+        // -------------------------------------------------------
+
+        function pad2(n) {
+            return String(n).padStart(2, "0");
+        }
+
+        function dateKey(year, month, day) {
+            return `${year}-${pad2(month)}-${pad2(day)}`;
+        }
+
+        function buildCalendarGrid(year, month) {
+            calendarBody.innerHTML = "";
+
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const daysInPrevMonth = new Date(year, month - 1, 0).getDate();
+            const startWeekday = new Date(year, month - 1, 1).getDay(); // 0 = Sun
+
+            const today = new Date();
+            const isCurrentMonthView = today.getFullYear() === year && (today.getMonth() + 1) === month;
+            const todayDate = today.getDate();
+
+            // Build a flat list of cells: leading days from the previous
+            // month, every day of this month, then trailing days from the
+            // next month so the grid always fills complete weeks.
+            const cells = [];
+            for (let i = startWeekday - 1; i >= 0; i--) {
+                cells.push({ day: daysInPrevMonth - i, inactive: true });
+            }
+            for (let d = 1; d <= daysInMonth; d++) {
+                cells.push({ day: d, inactive: false });
+            }
+            const trailingCount = (7 - (cells.length % 7)) % 7;
+            for (let d = 1; d <= trailingCount; d++) {
+                cells.push({ day: d, inactive: true });
+            }
+
+            for (let i = 0; i < cells.length; i += 7) {
+                const row = document.createElement("tr");
+
+                for (let j = i; j < i + 7; j++) {
+                    const cellInfo = cells[j];
+                    const weekdayIndex = j % 7; // 0 Sun ... 6 Sat
+                    const td = document.createElement("td");
+
+                    if (cellInfo.inactive) {
+                        td.classList.add("inactive");
+                    } else if (weekdayIndex === 0 || weekdayIndex === 6) {
+                        td.classList.add("red-date"); // weekend - non-operating day
+                    }
+
+                    if (!cellInfo.inactive && isCurrentMonthView && cellInfo.day === todayDate) {
+                        td.classList.add("today-date");
+                    }
+
+                    const dayNumberEl = document.createElement("div");
+                    dayNumberEl.className = "calendar-day-number";
+                    dayNumberEl.textContent = cellInfo.day;
+                    td.appendChild(dayNumberEl);
+
+                    if (!cellInfo.inactive) {
+                        const key = dateKey(year, month, cellInfo.day);
+                        const dayInfo = calendarDaysData[key];
+
+                        if (dayInfo) {
+                            if (dayInfo.has_occupied) {
+                                td.classList.add("has-occupied");
+                            } else if (dayInfo.has_reserved) {
+                                td.classList.add("has-reserved");
+                            }
+
+                            if (dayInfo.upcoming && dayInfo.upcoming.length > 0) {
+                                const eventsWrap = document.createElement("div");
+                                eventsWrap.className = "calendar-events";
+
+                                dayInfo.upcoming.forEach(function (ev) {
+                                    const evEl = document.createElement("div");
+                                    evEl.className = "calendar-event " + (ev.status === "occupied" ? "event-occupied" : "event-reserved");
+                                    evEl.textContent = `(${ev.station_no}) ${ev.start_time} - ${ev.end_time}`;
+                                    eventsWrap.appendChild(evEl);
+                                });
+
+                                td.appendChild(eventsWrap);
+                            }
+                        }
+                    }
+
+                    row.appendChild(td);
+                }
+
+                calendarBody.appendChild(row);
+            }
+        }
+
+        // -------------------------------------------------------
+        // FETCH CALENDAR STATUS FROM THE SERVER
+        // Calls /api/calendar-status for the selected month/location.
+        // -------------------------------------------------------
+
+        async function fetchCalendarStatus() {
+            if (!selectedYear || !selectedMonth) {
+                return;
+            }
+
+            const location = locationSelect.value || availableLocations[0] || "";
+
+            try {
+                const response = await fetch(
+                    `/api/calendar-status?year=${selectedYear}&month=${selectedMonth}&location=${encodeURIComponent(location)}`
+                );
+                const result = await response.json();
+
+                calendarDaysData = result.success ? (result.days || {}) : {};
+                if (!result.success) {
+                    console.error("Failed to load calendar status:", result.message);
+                }
+            } catch (err) {
+                console.error("Could not reach /api/calendar-status:", err);
+                calendarDaysData = {};
+            }
+
+            buildCalendarGrid(selectedYear, selectedMonth);
+        }
+
+        monthSelect.addEventListener("change", function () {
+            const [y, m] = monthSelect.value.split("-").map(Number);
+            selectedYear = y;
+            selectedMonth = m;
+            fetchCalendarStatus();
+        });
+
+        locationSelect.addEventListener("change", fetchCalendarStatus);
+
+        // -------------------------------------------------------
+        // FALSE APPOINTMENTS TABLE
+        // -------------------------------------------------------
+
+        async function fetchFalseAppointments() {
+            try {
+                const response = await fetch("/api/false-appointments");
+                const result = await response.json();
+
+                if (!result.success) {
+                    console.error("Failed to load false appointments:", result.message);
+                    return;
+                }
+
+                renderFalseAppointments(result.students || []);
+            } catch (err) {
+                console.error("Could not reach /api/false-appointments:", err);
+            }
+        }
+
+        function renderFalseAppointments(students) {
+            falseApptBody.innerHTML = "";
+
+            if (students.length === 0) {
+                const row = document.createElement("tr");
+                const cell = document.createElement("td");
+                cell.colSpan = 4;
+                cell.textContent = "No false appointments recorded.";
+                cell.style.textAlign = "center";
+                cell.style.color = "#888";
+                cell.style.fontWeight = "normal";
+                row.appendChild(cell);
+                falseApptBody.appendChild(row);
+                return;
+            }
+
+            students.forEach(function (student) {
+                const row = document.createElement("tr");
+
+                const nameCell = document.createElement("td");
+                const middleInitial = student.mi ? student.mi + ". " : "";
+                nameCell.textContent = `${student.first_name} ${middleInitial}${student.last_name}`;
+
+                const emailCell = document.createElement("td");
+                emailCell.textContent = student.gsfe_email;
+
+                const strikesCell = document.createElement("td");
+                strikesCell.textContent = student.strikes;
+
+                const actionCell = document.createElement("td");
+                const btn = document.createElement("button");
+                btn.className = "table-btn " + (student.restricted ? "gray-btn" : "red-btn");
+                btn.textContent = student.restricted ? "Unrestrict" : "Restrict";
+                btn.addEventListener("click", function () {
+                    handleRestrictToggle(student, btn);
+                });
+                actionCell.appendChild(btn);
+
+                if (student.restricted && student.restricted_until) {
+                    const note = document.createElement("div");
+                    note.style.fontSize = "11px";
+                    note.style.fontWeight = "normal";
+                    note.style.color = "#888";
+                    note.style.marginTop = "3px";
+                    note.textContent = `Until ${student.restricted_until}`;
+                    actionCell.appendChild(note);
+                }
+
+                row.appendChild(nameCell);
+                row.appendChild(emailCell);
+                row.appendChild(strikesCell);
+                row.appendChild(actionCell);
+                falseApptBody.appendChild(row);
+            });
+        }
+
+        // Restrict blocks the name/email from booking new appointments
+        // at the Learning Commons for 1 month and emails them a notice
+        // (/api/restrict). Unrestrict lifts that block early
+        // (/api/unrestrict). Both re-pull the table afterward so the
+        // Strikes count and button state stay accurate.
+        async function handleRestrictToggle(student, btn) {
+            btn.disabled = true;
+            const isCurrentlyRestricted = student.restricted;
+            const endpoint = isCurrentlyRestricted ? "/api/unrestrict" : "/api/restrict";
+
+            const payload = {
+                first_name: student.first_name,
+                last_name: student.last_name,
+                mi: student.mi,
+                gsfe_email: student.gsfe_email,
+            };
+
+            showSchedulingMessage(
+                null,
+                isCurrentlyRestricted ? "Lifting restriction..." : "Restricting and notifying the student..."
+            );
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    if (isCurrentlyRestricted) {
+                        showSchedulingMessage(true, `${student.first_name} ${student.last_name} has been unrestricted.`);
+                    } else {
+                        showSchedulingMessage(
+                            true,
+                            `${student.first_name} ${student.last_name} is restricted from the Learning Commons until ${result.restricted_until}. ` +
+                            (result.email_sent
+                                ? "A notification email was sent to their GSFE email."
+                                : "However, the notification email could not be sent — please check the email settings.")
+                        );
+                    }
+                    fetchFalseAppointments();
+                } else {
+                    showSchedulingMessage(false, result.message || "Action failed. Please try again.");
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                showSchedulingMessage(false, "Could not connect to the server. Please try again.");
+                btn.disabled = false;
+            }
+        }
+
+        // -------------------------------------------------------
+        // INIT
+        // -------------------------------------------------------
+
+        async function init() {
+            populateMonthOptions();
+            await populateLocationOptions();
+            await fetchCalendarStatus();
+            fetchFalseAppointments();
+        }
+
+        init();
+
+        setInterval(fetchCalendarStatus, CALENDAR_POLL_MS);
+        setInterval(fetchFalseAppointments, FALSE_APPT_POLL_MS);
+    </script>
+</body>
+</html>

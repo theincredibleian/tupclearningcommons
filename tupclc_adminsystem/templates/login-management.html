@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Appointment History | TUPC Learning Commons Management</title>
+</head>
+
+<body>
+    <!-- NAVIGATION BAR -->
+    <div class="navbar">
+        <div class="navbar-content">
+            <div class="navbar-logo">
+                <img src="{{ url_for('static', filename='tuplogo.png') }}" alt="Logo">
+            </div>
+            <div>
+                <h4>Technological University of the Philippines - Cavite</h4>
+                <h2>Learning Commons Management</h2>
+            </div>
+        </div>
+        <nav class="menu">
+            <a href="/dashboard" class="navbar-menu-btn">Home</a>
+            <a href="/manage-stations" class="navbar-menu-btn">Learning Commons</a>
+            <a href="/scheduling" class="navbar-menu-btn">Scheduling</a>
+            <a href="/login-management" class="navbar-menu-btn active">Login Management</a>
+            <a href="#" class="navbar-menu-btn">Account</a>
+        </nav>
+    </div>
+
+<!-- ==================================================== -->
+
+<!-- HISTORY TABS -->
+<div class="history-tabs" style="display:flex; gap:0;">
+        <a href="/login-management" class="tab-link">
+            <button class="tab-btn-left active-tab">Appointment History</button>
+        </a>
+        <a href="/ongoing-sessions" class="tab-link">
+            <button class="tab-btn-right">Ongoing Sessions</button>
+        </a>
+    </div>
+
+<!-- ==================================================== -->
+
+<!-- MAIN CONTENT -->
+<div class="history-container">
+
+    <div class="history-top">
+        <h1>Appointment History</h1>
+    </div>
+
+    <!-- SORT CONTROLS -->
+    <div class="history-filter">
+        <label for="sort-by-select">Sort by:</label>
+        <select id="sort-by-select">
+            <option value="date">Date</option>
+            <option value="name">Name</option>
+            <option value="start_time">Start Time</option>
+            <option value="end_time">End Time</option>
+            <option value="location">Location</option>
+            <option value="station_no">Station No.</option>
+        </select>
+
+        <label for="sort-order-select">Order:</label>
+        <select id="sort-order-select">
+            <option value="asc">Ascending</option>
+            <option value="desc" selected>Descending</option>
+        </select>
+    </div>
+
+    <!-- TABLE -->
+    <table class="history-table">
+
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Date</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Location</th>
+                <th>Station No.</th>
+                <th></th>
+            </tr>
+        </thead>
+
+        <tbody id="history-table-body">
+            <!-- Populated live from /api/appointment-history -->
+        </tbody>
+
+    </table>
+
+</div>
+
+<!-- ==================================================== -->
+
+<!-- APPOINTMENT DETAILS OVERLAY -->
+<div class="overlay-backdrop" id="details-overlay">
+    <div class="overlay-box">
+        <h3>Appointment Details</h3>
+
+        <p><strong>Name:</strong> <span id="detail-name"></span></p>
+        <p><strong>ID Number:</strong> <span id="detail-id"></span></p>
+        <p><strong>Email:</strong> <span id="detail-email"></span></p>
+        <p><strong>Date:</strong> <span id="detail-date"></span></p>
+        <p><strong>Start Time:</strong> <span id="detail-start"></span></p>
+        <p><strong>End Time:</strong> <span id="detail-end"></span></p>
+        <p><strong>Location:</strong> <span id="detail-location"></span></p>
+        <p><strong>Station No.:</strong> <span id="detail-station"></span></p>
+        <p><strong>Status:</strong> <span id="detail-status"></span></p>
+
+        <div class="overlay-buttons">
+            <button class="gray-btn" id="detail-close-btn">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================================================== -->
+
+    <script>
+
+        // =========================================================
+        // APPOINTMENT HISTORY PAGE
+        // Lists every appointment ever made (any status), pulled from
+        // /api/appointment-history. Sortable client-side by the "Sort
+        // by" + ascending/descending controls; defaults to Date,
+        // Descending (most recent first) on load. Each row has a
+        // "Details" button that opens an overlay with the full
+        // appointment info.
+        // =========================================================
+
+        const HISTORY_POLL_MS = 20000; // refresh every 20s
+
+        const historyBody = document.getElementById("history-table-body");
+        const detailsOverlay = document.getElementById("details-overlay");
+        const sortBySelect = document.getElementById("sort-by-select");
+        const sortOrderSelect = document.getElementById("sort-order-select");
+
+        const STATUS_LABELS = {
+            reserved: "Reserved",
+            occupied: "Occupied",
+            expired: "Expired",
+            completed: "Completed",
+        };
+
+        // Maps each "Sort by" option to the sort-friendly field the
+        // server sends alongside the display text for that column.
+        const SORT_FIELD_MAP = {
+            date: "date_sort",
+            name: "name_sort",
+            start_time: "start_time_sort",
+            end_time: "end_time_sort",
+            location: "location",
+            station_no: "station_sort",
+        };
+
+        let historyData = [];
+
+        function statusClass(status) {
+            if (status === "occupied") return "occupied-text";
+            if (status === "reserved") return "reserved-text";
+            if (status === "completed") return "vacant-text";
+            return "closed-text";
+        }
+
+        // -------------------------------------------------------
+        // FETCH
+        // -------------------------------------------------------
+
+        async function fetchHistory() {
+            try {
+                const response = await fetch("/api/appointment-history");
+                const result = await response.json();
+
+                if (!result.success) {
+                    console.error("Failed to load appointment history:", result.message);
+                    return;
+                }
+
+                historyData = result.history || [];
+                renderHistory();
+            } catch (err) {
+                console.error("Could not reach /api/appointment-history:", err);
+            }
+        }
+
+        // -------------------------------------------------------
+        // SORT + RENDER
+        // -------------------------------------------------------
+
+        function getSortedHistory() {
+            const sortBy = sortBySelect.value;
+            const order = sortOrderSelect.value;
+            const field = SORT_FIELD_MAP[sortBy] || "date_sort";
+
+            const sorted = historyData.slice().sort(function (a, b) {
+                let cmp;
+                if (typeof a[field] === "number" || typeof b[field] === "number") {
+                    cmp = a[field] - b[field];
+                } else {
+                    cmp = String(a[field]).localeCompare(String(b[field]));
+                }
+
+                // Tie-break by date then start time so equal keys keep a
+                // stable, sensible ordering.
+                if (cmp === 0 && field !== "date_sort") {
+                    cmp = String(a.date_sort).localeCompare(String(b.date_sort));
+                }
+                if (cmp === 0 && field !== "start_time_sort") {
+                    cmp = String(a.start_time_sort).localeCompare(String(b.start_time_sort));
+                }
+
+                return order === "desc" ? -cmp : cmp;
+            });
+
+            return sorted;
+        }
+
+        function renderHistory() {
+            const sorted = getSortedHistory();
+            historyBody.innerHTML = "";
+
+            if (sorted.length === 0) {
+                const row = document.createElement("tr");
+                const cell = document.createElement("td");
+                cell.colSpan = 7;
+                cell.textContent = "No appointment history recorded.";
+                cell.style.textAlign = "center";
+                cell.style.color = "#888";
+                cell.style.fontWeight = "normal";
+                row.appendChild(cell);
+                historyBody.appendChild(row);
+                return;
+            }
+
+            sorted.forEach(function (appt) {
+                const row = document.createElement("tr");
+
+                const nameCell = document.createElement("td");
+                nameCell.textContent = appt.full_name;
+
+                const dateCell = document.createElement("td");
+                dateCell.textContent = appt.date;
+
+                const startCell = document.createElement("td");
+                startCell.textContent = appt.start_time;
+
+                const endCell = document.createElement("td");
+                endCell.textContent = appt.end_time;
+
+                const locationCell = document.createElement("td");
+                locationCell.textContent = appt.location;
+
+                const stationCell = document.createElement("td");
+                stationCell.textContent = appt.station_no;
+
+                const actionCell = document.createElement("td");
+                actionCell.className = "table-buttons";
+                const btn = document.createElement("button");
+                btn.className = "table-btn gray-btn";
+                btn.textContent = "Details";
+                btn.addEventListener("click", function () {
+                    showDetails(appt);
+                });
+                actionCell.appendChild(btn);
+
+                row.appendChild(nameCell);
+                row.appendChild(dateCell);
+                row.appendChild(startCell);
+                row.appendChild(endCell);
+                row.appendChild(locationCell);
+                row.appendChild(stationCell);
+                row.appendChild(actionCell);
+                historyBody.appendChild(row);
+            });
+        }
+
+        sortBySelect.addEventListener("change", renderHistory);
+        sortOrderSelect.addEventListener("change", renderHistory);
+
+        // -------------------------------------------------------
+        // DETAILS OVERLAY
+        // -------------------------------------------------------
+
+        function showDetails(appt) {
+            document.getElementById("detail-name").textContent = appt.full_name;
+            document.getElementById("detail-id").textContent = appt.id_number;
+            document.getElementById("detail-email").textContent = appt.gsfe_email;
+            document.getElementById("detail-date").textContent = appt.date;
+            document.getElementById("detail-start").textContent = appt.start_time;
+            document.getElementById("detail-end").textContent = appt.end_time;
+            document.getElementById("detail-location").textContent = appt.location;
+            document.getElementById("detail-station").textContent = appt.station_no;
+
+            const statusEl = document.getElementById("detail-status");
+            statusEl.textContent = STATUS_LABELS[appt.status] || appt.status;
+            statusEl.className = statusClass(appt.status);
+
+            detailsOverlay.classList.add("show");
+        }
+
+        function hideDetails() {
+            detailsOverlay.classList.remove("show");
+        }
+
+        document.getElementById("detail-close-btn").addEventListener("click", hideDetails);
+        detailsOverlay.addEventListener("click", function (e) {
+            if (e.target === detailsOverlay) hideDetails();
+        });
+
+        // -------------------------------------------------------
+        // INIT
+        // Default sort is Date / Descending (set on the <select>
+        // elements above), so the table is sorted by date as soon as
+        // the first fetch renders it.
+        // -------------------------------------------------------
+
+        fetchHistory();
+        setInterval(fetchHistory, HISTORY_POLL_MS);
+    </script>
+</body>
+</html>

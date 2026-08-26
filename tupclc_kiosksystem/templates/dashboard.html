@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='right-panel.css') }}">
+    <title>Dashboard | TUPC Learning Commons</title>
+</head>
+
+<body>
+    <!-- NAVIGATION BAR -->
+    <div class="navbar">
+        <div class="navbar-content">
+            <div class="navbar-logo">
+                <img src="{{ url_for('static', filename='tuplogo.png') }}" alt="Logo">
+            </div>
+            <div>
+                <h4>Technological University of the Philippines - Cavite</h4>
+                <h2>Learning Commons</h2>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content" style="gap: 1rem;">
+
+        <!-- LEFT PANEL -->
+        <div class="left-panel">
+            <div class="status-card">
+                <h1>Availability Status</h1>
+
+                <!-- TOP STATUS -->
+                <div class="top-status">
+
+                    <!-- LEFT -->
+                    <div class="status-left">
+                        <p class="date-time" id="datetime-display"></p>
+
+                        <label class="location-label">Location:</label>
+
+                        <select id="dashboard-location-select" class="location-select">
+                            <option value="Main Learning Commons">Main Learning Commons</option>
+                            <option value="Learning Commons 2">Learning Commons 2</option>
+                        </select>
+                    </div>
+
+                    <!-- RIGHT -->
+                    <div class="status-right" id="status-summary"></div>
+                </div>
+
+                <!-- STATIONS -->
+                <div class="stations" id="stations-container"></div>
+
+                <!-- BUTTONS -->
+                <div class="buttons">
+                    <button class="gray-btn" type="button" onclick="window.location.href='detailed-status'">More Information</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL -->
+        <div class="right-panel">
+
+            <!-- OPENING HOURS -->
+            <div class="card opening-card">
+                <h2>Opening Hours</h2>
+
+                <p class="opening-time">
+                    Weekdays, 8:00 AM to 5:00 PM
+                </p>
+
+                <p class="opening-note">
+                    (except for holidays)
+                </p>
+            </div>
+
+            <!-- QR VERIFICATION -->
+            <div class="card">
+
+                <h2>QR Code Verification</h2>
+
+                <h1 class="qrstatus" id="qrstatus-text">
+                    ---
+                </h1>
+
+                <input
+                    type="text"
+                    id="qr-scan-input"
+                    class="qr-scan-input"
+                    placeholder="Scan student QR code..."
+                    autocomplete="off"
+                    autofocus
+                >
+
+            </div>
+
+            <!-- APPOINTMENT DETAILS -->
+            <div class="card appointment-card">
+
+                <h2>Appointment Details</h2>
+
+                <div class="appointment-info">
+
+                    <div class="label-column">
+
+                        <p>Name:</p>
+                        <p>Date:</p>
+                        <p>Time in:</p>
+                        <p>Time out:</p>
+                        <p>Location:</p>
+                        <p>Station:</p>
+
+                    </div>
+
+                    <div class="value-column">
+
+                        <p id="appt-name">---</p>
+                        <p id="appt-date">---</p>
+                        <p id="appt-timein">---</p>
+                        <p id="appt-timeout">---</p>
+                        <p id="appt-location">---</p>
+                        <p id="appt-station">---</p>
+
+                    </div>
+
+                </div>
+
+                <div class="appointment-button">
+
+                    <button class="small-red-btn" id="btn-appointment-close" type="button">
+                        Close
+                    </button>
+
+                </div>
+
+            </div>
+
+            <!-- RESERVE AN APPOINTMENT (opens the Schedule an Appointment modal) -->
+            <div class="reserve-btn-container">
+                <button type="button" id="btn-open-reserve" class="red-btn reserve-btn">
+                    Reserve an Appointment
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ================================================================
+         RESERVE AN APPOINTMENT — POP-UP OVERLAY
+         Hidden by default (.modal-overlay); shown when "Reserve an
+         Appointment" is clicked, hidden again on close/cancel or a
+         successful submission.
+         ================================================================ -->
+    <div id="reserve-modal-overlay" class="modal-overlay">
+        <div class="modal-box card">
+
+            <div class="modal-header">
+                <h1>Schedule an Appointment</h1>
+                <button type="button" id="btn-close-reserve" class="modal-close-btn" aria-label="Close">&times;</button>
+            </div>
+
+            <!-- CONFIRMATION BANNER (hidden until a submission happens) -->
+            <div id="confirmation-banner" class="confirmation-banner"></div>
+
+            <!-- ============================================
+                 RESERVATION TYPE TABS
+                 ============================================ -->
+            <div class="reservation-tabs" role="tablist">
+                <button type="button" id="tab-btn-individual" class="reservation-tab-btn active"
+                        role="tab" aria-selected="true" aria-controls="tab-panel-individual">
+                    Individual Reservation
+                </button>
+                <button type="button" id="tab-btn-group" class="reservation-tab-btn"
+                        role="tab" aria-selected="false" aria-controls="tab-panel-group">
+                    Group Reservation
+                </button>
+            </div>
+
+            <!-- ============================================
+                 INDIVIDUAL RESERVATION TAB
+                 ============================================ -->
+            <div id="tab-panel-individual" class="reservation-tab-panel active" role="tabpanel" aria-labelledby="tab-btn-individual">
+                <form id="appointment-form">
+                    <div class="form-group">
+                        <div class="password-box-personal">
+                            <h4>Personal Information</h4>
+                            <label class="appointment-label">First Name</label>
+                            <input type="text" id="first_name" class="form-input" placeholder="Enter First Name" required>
+                            <div style="display: flex; gap: 1rem;">
+                                <div style="flex: 1;">
+                                    <label class="appointment-label">Last Name</label>
+                                    <input type="text" id="last_name" class="form-input" placeholder="Enter Last Name" required>
+                                </div>
+                                <div style="flex: 0 0 85px;">
+                                    <label class="appointment-label">M.I.</label>
+                                    <input type="text" id="mi" class="form-input" placeholder="Enter M.I." required>
+                                </div>
+                            </div>
+                            <label class="appointment-label">GSFE Email</label>
+                            <input type="email" id="gsfe_email" class="form-input" placeholder="Enter GSFE Email" required>
+                        </div>
+
+                        <div class="password-box-appointment">
+                            <h4>Appointment Details</h4>
+                            <label class="appointment-label">Date</label>
+                            <input type="date" id="appt_date" class="form-dropdown" required>
+
+                            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                <div style="flex: 1; min-width: 180px;">
+                                    <label class="appointment-label">Station No.</label>
+                                    <select id="station_no" class="form-dropdown" required>
+                                        <option value="Station 1">Station 1</option>
+                                        <option value="Station 2">Station 2</option>
+                                        <option value="Station 3">Station 3</option>
+                                        <option value="Station 4">Station 4</option>
+                                        <option value="Station 5">Station 5</option>
+                                        <option value="Station 6">Station 6</option>
+                                        <option value="Station 7">Station 7</option>
+                                        <option value="Station 8">Station 8</option>
+                                        <option value="Station 9">Station 9</option>
+                                        <option value="Station 10">Station 10</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 1; min-width: 180px;">
+                                    <label class="appointment-label">Location</label>
+                                    <select id="appt_location" class="form-dropdown" required>
+                                        <option value="Main Learning Commons">Main Learning Commons</option>
+                                        <option value="Learning Commons 2">Learning Commons 2</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                <div style="flex: 1; min-width: 180px;">
+                                    <label class="appointment-label">Start Time</label>
+                                    <input type="time" id="start_time" class="form-dropdown" min="08:00" max="17:00" step="900" required>
+                                </div>
+                                <div style="flex: 1; min-width: 180px;">
+                                    <label class="appointment-label">End Time</label>
+                                    <input type="time" id="end_time" class="form-dropdown" min="08:00" max="17:00" step="900" required>
+                                </div>
+                                <h5>Note: Make sure that all provided details are valid and correct.</h5>
+                                <div class="buttons" style="margin-left: auto; display: flex; gap: 0.1px;">
+                                    <button type="button" id="btn-clear" class="clear-btn">Clear Data</button>
+                                    <button type="button" id="btn-done" class="red-btn">Done</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- ============================================
+                 GROUP RESERVATION TAB
+                 ============================================ -->
+            <div id="tab-panel-group" class="reservation-tab-panel" role="tabpanel" aria-labelledby="tab-btn-group">
+                <form id="group-appointment-form">
+                    <div class="form-group">
+                        <div class="password-box-personal">
+                            <h4>Group Information</h4>
+                            <label class="appointment-label">Name of Group Representative</label>
+                            <input type="text" id="group_representative" class="form-input" placeholder="Enter Group Representative's Name" required>
+
+                            <label class="appointment-label">Purpose</label>
+                            <input type="text" id="group_purpose" class="form-input" placeholder="Enter Purpose of Reservation" required>
+
+                            <label class="appointment-label">GSFE Email</label>
+                            <input type="email" id="group_gsfe_email" class="form-input" placeholder="Enter GSFE Email" required>
+                        </div>
+
+                        <div class="password-box-appointment">
+                            <h4>Appointment Details</h4>
+                            <label class="appointment-label">Date</label>
+                            <input type="date" id="group_appt_date" class="form-dropdown" required>
+
+                            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                <div style="flex: 1; min-width: 180px;">
+                                    <label class="appointment-label">Location</label>
+                                    <select id="group_appt_location" class="form-dropdown" required>
+                                        <option value="Main Learning Commons">Main Learning Commons</option>
+                                        <option value="Learning Commons 2">Learning Commons 2</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 1; min-width: 180px;">
+                                    <label class="appointment-label">Start Time</label>
+                                    <input type="time" id="group_start_time" class="form-dropdown" min="08:00" max="17:00" step="900" required>
+                                </div>
+                                <div style="flex: 1; min-width: 180px;">
+                                    <label class="appointment-label">End Time</label>
+                                    <input type="time" id="group_end_time" class="form-dropdown" min="08:00" max="17:00" step="900" required>
+                                </div>
+                            </div>
+
+                            <label class="appointment-label">Stations to be Reserved</label>
+                            <p id="group-station-hint" class="group-station-hint">Fill in Date, Location, Start Time, and End Time above to see available stations.</p>
+                            <div id="group-station-checklist" class="group-station-checklist"></div>
+
+                            <h5>Note: Make sure that all provided details are valid and correct.</h5>
+                            <div class="buttons" style="margin-left: auto; display: flex; gap: 0.1px;">
+                                <button type="button" id="btn-group-clear" class="clear-btn">Clear Data</button>
+                                <button type="button" id="btn-group-done" class="red-btn">Done</button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+
+        // -------------------------------------------------------
+        // STATION DATA (now pulled live from the database)
+        // stationsData is refreshed by fetchStationStatus() below
+        // instead of being hardcoded. Valid statuses returned by
+        // the backend: "vacant", "occupied", "reserved"
+        // -------------------------------------------------------
+
+        let stationsData = [];
+
+        // -------------------------------------------------------
+        // STATUS LABELS
+        // -------------------------------------------------------
+
+        const statusLabels = {
+            vacant:   "Vacant",
+            occupied: "Occupied",
+            reserved: "Reserved",
+            closed:   "Closed",
+        };
+
+        function isStationClosedNow() {
+            const now = new Date();
+            const day = now.getDay(); // 0 = Sunday, 6 = Saturday
+
+            if (day === 0 || day === 6) {
+                return true;
+            }
+
+            const hour = now.getHours();
+            return hour < 8 || hour >= 17;
+        }
+
+        function applyClosedStatus(stations) {
+            if (!isStationClosedNow()) {
+                return;
+            }
+
+            stations.forEach(function(station) {
+                station.status = "closed";
+            });
+        }
+
+        // -------------------------------------------------------
+        // FETCH STATION STATUS FROM THE SERVER
+        // Calls /api/station-status, which reads today's appointments
+        // from learning_commons_db and derives each station's current
+        // status based on the real clock time. Filters by whichever
+        // location is selected in the dropdown.
+        // -------------------------------------------------------
+
+        async function fetchStationStatus() {
+            const locationSelect = document.getElementById("dashboard-location-select");
+            const location = locationSelect ? locationSelect.value : "Main Learning Commons";
+
+            try {
+                const response = await fetch(`/api/station-status?location=${encodeURIComponent(location)}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    console.error("Failed to load station status:", result.message);
+                    return;
+                }
+
+                // Convert the {stationName: {...}} object from the API
+                // into the array shape renderStations()/renderSummary() expect.
+                stationsData = Object.entries(result.stations).map(([name, info], index) => ({
+                    id: index + 1,
+                    name: name,
+                    status: info.status,
+                    timeStart: info.start_time,
+                    timeEnd: info.end_time,
+                }));
+
+                // Ensure stations are ordered numerically by station number (Station 1..10)
+                stationsData.sort(function(a, b) {
+                    function stationNum(s) {
+                        const m = s.name.match(/(\d+)$/);
+                        return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+                    }
+                    return stationNum(a) - stationNum(b);
+                });
+
+                applyClosedStatus(stationsData);
+                renderStations();
+                renderSummary();
+            } catch (err) {
+                console.error("Could not reach /api/station-status:", err);
+            }
+        }
+
+        // -------------------------------------------------------
+        // RENDER STATIONS
+        // -------------------------------------------------------
+
+        function renderStations() {
+            const container = document.getElementById("stations-container");
+            container.innerHTML = "";
+
+            stationsData.forEach(function(station) {
+                const wrapper = document.createElement("div");
+                wrapper.className = "station-wrapper";
+
+                const label = document.createElement("div");
+                label.className = "station-label";
+                label.textContent = station.name;
+
+                const stationCard = document.createElement("div");
+                stationCard.className = "station " + station.status;
+
+                const statusText = document.createElement("div");
+                statusText.className = "station-status";
+                statusText.textContent = statusLabels[station.status] || station.status;
+
+                const timeText = document.createElement("div");
+                timeText.className = "station-time";
+                timeText.style.textAlign = "center";
+                timeText.style.fontWeight = "normal";
+                timeText.style.marginTop = "-5px";
+                timeText.style.fontSize = "0.7rem";
+                if (station.timeStart && station.timeEnd) {
+                    timeText.textContent = station.timeStart + " - " + station.timeEnd;
+                } else {
+                    timeText.textContent = "";
+                }
+
+                stationCard.appendChild(statusText);
+                stationCard.appendChild(timeText);
+                wrapper.appendChild(label);
+                wrapper.appendChild(stationCard);
+                container.appendChild(wrapper);
+            });
+        }
+
+        // -------------------------------------------------------
+        // RENDER STATUS SUMMARY
+        // -------------------------------------------------------
+
+        function renderSummary() {
+            const counts = { vacant: 0, occupied: 0, reserved: 0 };
+
+            stationsData.forEach(function(station) {
+                if (counts[station.status] !== undefined) {
+                    counts[station.status]++;
+                }
+            });
+
+            const summary = document.getElementById("status-summary");
+            summary.innerHTML =
+                "<p>Vacant: "   + counts.vacant   + "</p>" +
+                "<p>Reserved: " + counts.reserved  + "</p>" +
+                "<p>Occupied: " + counts.occupied  + "</p>" +
+                "<p>Total: "    + stationsData.length + "</p>";
+        }
+
+        // -------------------------------------------------------
+        // RENDER DATE/TIME
+        // -------------------------------------------------------
+
+        function renderDateTime() {
+            const now = new Date();
+            const options = {
+                year:   "numeric",
+                month:  "long",
+                day:    "numeric",
+                hour:   "numeric",
+                minute: "2-digit",
+                hour12: true,
+            };
+            const formatted = now.toLocaleString("en-US", options).replace("at", "•");
+            document.getElementById("datetime-display").innerHTML = '<strong>' + formatted + '</strong>';
+        }
+
+        // -------------------------------------------------------
+        // QR CODE VERIFICATION + APPOINTMENT DETAILS
+        // A hardware QR scanner acts like a keyboard: it "types" the
+        // scanned QR payload (the JSON produced by generate_qr_code()
+        // in app.py) into #qr-scan-input and sends Enter. We parse
+        // that JSON, pull out id_number, and send it to /api/checkin,
+        // which verifies it against today's appointments and reports
+        // back whether it's verified, not verified, or expired.
+        // -------------------------------------------------------
+
+        const qrStatusEl = document.getElementById("qrstatus-text");
+        const qrScanInput = document.getElementById("qr-scan-input");
+
+        const appointmentFieldEls = {
+            name:     document.getElementById("appt-name"),
+            date:     document.getElementById("appt-date"),
+            timein:   document.getElementById("appt-timein"),
+            timeout:  document.getElementById("appt-timeout"),
+            location: document.getElementById("appt-location"),
+            station:  document.getElementById("appt-station"),
+        };
+
+        const qrStatusLabels = {
+            verified:   "Verified",
+            invalid:    "Invalid",
+            expired:    "Expired",
+            signed_out: "Signed Out",
+        };
+
+        // Sets the QR status display. Pass no argument (or an unknown
+        // value) to reset it back to the "---" placeholder.
+        function setQrStatus(kind) {
+            qrStatusEl.classList.remove("qrstatus-verified", "qrstatus-invalid", "qrstatus-expired", "qrstatus-signedout");
+
+            if (kind === "verified") {
+                qrStatusEl.textContent = qrStatusLabels.verified;
+                qrStatusEl.classList.add("qrstatus-verified");
+            } else if (kind === "invalid") {
+                qrStatusEl.textContent = qrStatusLabels.invalid;
+                qrStatusEl.classList.add("qrstatus-invalid");
+            } else if (kind === "expired") {
+                qrStatusEl.textContent = qrStatusLabels.expired;
+                qrStatusEl.classList.add("qrstatus-expired");
+            } else if (kind === "signed_out") {
+                qrStatusEl.textContent = qrStatusLabels.signed_out;
+                qrStatusEl.classList.add("qrstatus-signedout");
+            } else {
+                qrStatusEl.textContent = "---";
+            }
+        }
+
+        function clearAppointmentDetails() {
+            appointmentFieldEls.name.textContent     = "---";
+            appointmentFieldEls.date.textContent     = "---";
+            appointmentFieldEls.timein.textContent   = "---";
+            appointmentFieldEls.timeout.textContent  = "---";
+            appointmentFieldEls.location.textContent = "---";
+            appointmentFieldEls.station.textContent  = "---";
+        }
+
+        function displayAppointmentDetails(appt) {
+            if (!appt) {
+                clearAppointmentDetails();
+                return;
+            }
+            const middleInitial = appt.mi ? appt.mi + ". " : "";
+            appointmentFieldEls.name.textContent     = `${appt.first_name} ${middleInitial}${appt.last_name}`;
+            appointmentFieldEls.date.textContent     = appt.date;
+            appointmentFieldEls.timein.textContent   = appt.start_time;
+            appointmentFieldEls.timeout.textContent  = appt.end_time;
+            appointmentFieldEls.location.textContent = appt.location;
+            appointmentFieldEls.station.textContent  = appt.station_no;
+        }
+
+        async function handleQrScan(rawValue) {
+            const trimmed = (rawValue || "").trim();
+            if (!trimmed) {
+                return;
+            }
+
+            // The QR code encodes a JSON payload (see generate_qr_code()
+            // in app.py). Anything that isn't parseable JSON with an
+            // id_number is simply not a valid appointment QR code.
+            let payload;
+            try {
+                payload = JSON.parse(trimmed);
+            } catch (err) {
+                setQrStatus("invalid");
+                clearAppointmentDetails();
+                return;
+            }
+
+            const idNumber = payload && payload.id_number;
+            if (!idNumber) {
+                setQrStatus("invalid");
+                clearAppointmentDetails();
+                return;
+            }
+
+            try {
+                const response = await fetch("/api/checkin", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id_number: idNumber }),
+                });
+                const result = await response.json();
+
+                setQrStatus(result.verification);
+                displayAppointmentDetails(result.appointment);
+
+                fetchStationStatus();  // reflect the check-in on the left panel right away
+            } catch (err) {
+                console.error("Could not reach /api/checkin:", err);
+                setQrStatus("invalid");
+                clearAppointmentDetails();
+            }
+        }
+
+        // -------------------------------------------------------
+        // GLOBAL QR SCAN CAPTURE
+        // A hardware QR scanner behaves like a very fast keyboard: it
+        // "types" every character of the payload and then sends Enter,
+        // regardless of which element currently has focus. Listening
+        // only on #qr-scan-input meant a scan was silently dropped the
+        // moment the cashier/admin clicked anywhere else on the page
+        // (a button, the location dropdown, etc). Listening on the
+        // whole document instead means scans are captured no matter
+        // where focus happens to be - EXCEPT other genuine typing
+        // fields (the appointment form, dropdowns, etc.), which are
+        // left alone so normal typing/selecting still works.
+        // -------------------------------------------------------
+
+        let qrScanBuffer = "";
+        let lastQrScanKeyTime = 0;
+        const QR_SCAN_KEY_GAP_MS = 500; // scanner keystrokes arrive in a fast burst
+
+        function isOtherTypingField(target) {
+            if (!target || target === qrScanInput) {
+                return false;
+            }
+            const tag = target.tagName ? target.tagName.toLowerCase() : "";
+            return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+        }
+
+        document.addEventListener("keydown", function (e) {
+            // Don't hijack real typing happening in another field
+            // (e.g. the appointment scheduling form, location select).
+            if (isOtherTypingField(e.target)) {
+                return;
+            }
+
+            const now = Date.now();
+            if (now - lastQrScanKeyTime > QR_SCAN_KEY_GAP_MS) {
+                qrScanBuffer = ""; // gap too long - start a fresh scan
+            }
+            lastQrScanKeyTime = now;
+
+            if (e.key === "Enter") {
+                e.preventDefault();
+                const value = qrScanBuffer;
+                qrScanBuffer = "";
+                if (qrScanInput) {
+                    qrScanInput.value = "";
+                }
+                handleQrScan(value);
+                return;
+            }
+
+            if (e.key.length === 1) {
+                qrScanBuffer += e.key;
+            }
+        });
+
+        const btnAppointmentClose = document.getElementById("btn-appointment-close");
+        if (btnAppointmentClose) {
+            btnAppointmentClose.addEventListener("click", function () {
+                setQrStatus();
+                clearAppointmentDetails();
+                if (qrScanInput) {
+                    qrScanInput.focus();
+                }
+            });
+        }
+
+        // -------------------------------------------------------
+        // RESERVE AN APPOINTMENT — MODAL OVERLAY CONTROLS
+        // Shows/hides the "Schedule an Appointment" form, which now
+        // lives in a pop-up overlay instead of sitting in the right
+        // panel at all times.
+        // -------------------------------------------------------
+
+        const reserveModalOverlay = document.getElementById("reserve-modal-overlay");
+        const btnOpenReserve = document.getElementById("btn-open-reserve");
+        const btnCloseReserve = document.getElementById("btn-close-reserve");
+
+        function openReserveModal() {
+            if (!reserveModalOverlay) return;
+            reserveModalOverlay.classList.add("active");
+            document.body.style.overflow = "hidden"; // lock background scroll while modal is open
+            if (typeof activateTab === "function") {
+                activateTab("individual"); // always open on the Individual Reservation tab
+            }
+        }
+
+        function closeReserveModal() {
+            if (!reserveModalOverlay) return;
+            reserveModalOverlay.classList.remove("active");
+            document.body.style.overflow = "";
+        }
+
+        if (btnOpenReserve) {
+            btnOpenReserve.addEventListener("click", openReserveModal);
+        }
+
+        if (btnCloseReserve) {
+            btnCloseReserve.addEventListener("click", closeReserveModal);
+        }
+
+        // Clicking the dimmed backdrop (outside the form card) also closes it
+        if (reserveModalOverlay) {
+            reserveModalOverlay.addEventListener("click", function (e) {
+                if (e.target === reserveModalOverlay) {
+                    closeReserveModal();
+                }
+            });
+        }
+
+        // Esc key closes the modal
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && reserveModalOverlay && reserveModalOverlay.classList.contains("active")) {
+                closeReserveModal();
+            }
+        });
+
+        // -------------------------------------------------------
+        // RESERVATION TYPE TABS (Individual / Group)
+        // -------------------------------------------------------
+
+        const tabBtnIndividual = document.getElementById("tab-btn-individual");
+        const tabBtnGroup = document.getElementById("tab-btn-group");
+        const tabPanelIndividual = document.getElementById("tab-panel-individual");
+        const tabPanelGroup = document.getElementById("tab-panel-group");
+
+        function activateTab(tab) {
+            const isIndividual = tab === "individual";
+
+            tabBtnIndividual.classList.toggle("active", isIndividual);
+            tabBtnGroup.classList.toggle("active", !isIndividual);
+            tabBtnIndividual.setAttribute("aria-selected", isIndividual ? "true" : "false");
+            tabBtnGroup.setAttribute("aria-selected", !isIndividual ? "true" : "false");
+
+            tabPanelIndividual.classList.toggle("active", isIndividual);
+            tabPanelGroup.classList.toggle("active", !isIndividual);
+
+            // Belt-and-suspenders: force the actual inline display too, in
+            // case any other stylesheet rule ever competes with the class.
+            tabPanelIndividual.style.display = isIndividual ? "block" : "none";
+            tabPanelGroup.style.display = !isIndividual ? "block" : "none";
+
+            hideConfirmation();
+        }
+
+        if (tabBtnIndividual) {
+            tabBtnIndividual.addEventListener("click", function () { activateTab("individual"); });
+        }
+        if (tabBtnGroup) {
+            tabBtnGroup.addEventListener("click", function () { activateTab("group"); });
+        }
+
+        // -------------------------------------------------------
+        // GROUP RESERVATION — STATION CHECKLIST
+        // Whenever Date / Location / Start Time / End Time are all
+        // filled in on the Group tab, ask the server which stations
+        // are already booked for that exact window and render a
+        // checkbox per station, disabling the ones that are taken.
+        // -------------------------------------------------------
+
+        const groupDateInput = document.getElementById("group_appt_date");
+        const groupLocationSelect = document.getElementById("group_appt_location");
+        const groupStartInput = document.getElementById("group_start_time");
+        const groupEndInput = document.getElementById("group_end_time");
+        const groupStationChecklist = document.getElementById("group-station-checklist");
+        const groupStationHint = document.getElementById("group-station-hint");
+
+        const ALL_STATIONS = [
+            "Station 1", "Station 2", "Station 3", "Station 4", "Station 5",
+            "Station 6", "Station 7", "Station 8", "Station 9", "Station 10",
+        ];
+
+        function setGroupStationHint(text) {
+            if (groupStationHint) groupStationHint.textContent = text;
+        }
+
+        // Always renders all 10 stations as checkboxes — the grid itself
+        // never disappears. `stationsAvailability` is either a map of
+        // { "Station 1": "vacant" | "reserved", ... } from the server, or
+        // null (meaning we don't know availability yet / the chosen slot
+        // is invalid), in which case every checkbox is shown but locked.
+        function renderGroupStationCheckboxes(stationsAvailability) {
+            groupStationChecklist.innerHTML = "";
+            ALL_STATIONS.forEach(function (stationName) {
+                const isLocked = stationsAvailability === null;
+                const status = isLocked ? "vacant" : (stationsAvailability[stationName] || "vacant");
+                const isReserved = !isLocked && status !== "vacant";
+
+                const label = document.createElement("label");
+                label.className = "group-station-checkbox" +
+                    (isReserved ? " is-disabled" : "") +
+                    (isLocked ? " is-locked" : "");
+
+                const input = document.createElement("input");
+                input.type = "checkbox";
+                input.value = stationName;
+                input.name = "group_station";
+                input.disabled = isReserved || isLocked;
+
+                const span = document.createElement("span");
+                span.textContent = stationName + (isReserved ? " (Reserved)" : "");
+
+                label.appendChild(input);
+                label.appendChild(span);
+                groupStationChecklist.appendChild(label);
+            });
+        }
+
+        async function refreshGroupStationAvailability() {
+            const date = groupDateInput.value;
+            const location = groupLocationSelect.value;
+            const startTime = groupStartInput.value;
+            const endTime = groupEndInput.value;
+
+            if (!date || !location || !startTime || !endTime) {
+                setGroupStationHint(
+                    "Fill in Date, Location, Start Time, and End Time above to see available stations."
+                );
+                renderGroupStationCheckboxes(null);
+                return;
+            }
+
+            const slotError = validateAppointmentSlot(date, startTime, endTime);
+            if (slotError) {
+                setGroupStationHint(slotError);
+                renderGroupStationCheckboxes(null);
+                return;
+            }
+
+            setGroupStationHint("Checking station availability...");
+
+            try {
+                const params = new URLSearchParams({ date, location, start_time: startTime, end_time: endTime });
+                const response = await fetch(`/api/group-station-availability?${params.toString()}`);
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    setGroupStationHint("Select the station(s) you'd like to reserve below.");
+                    renderGroupStationCheckboxes(result.stations);
+                } else {
+                    setGroupStationHint(result.message || "Could not load station availability.");
+                    renderGroupStationCheckboxes(null);
+                }
+            } catch (err) {
+                setGroupStationHint("Could not connect to the server to check station availability.");
+                renderGroupStationCheckboxes(null);
+            }
+        }
+
+        // Render the (locked) grid immediately on page load so it's
+        // visible right away, before any date/time has been chosen.
+        renderGroupStationCheckboxes(null);
+
+        [groupDateInput, groupLocationSelect, groupStartInput, groupEndInput].forEach(function (el) {
+            if (el) el.addEventListener("change", refreshGroupStationAvailability);
+        });
+
+        function getSelectedGroupStations() {
+            return Array.from(
+                groupStationChecklist.querySelectorAll('input[name="group_station"]:checked')
+            ).map(function (el) { return el.value; });
+        }
+
+        // -------------------------------------------------------
+        // GROUP RESERVATION FORM SUBMISSION
+        // -------------------------------------------------------
+
+        const btnGroupDone = document.getElementById("btn-group-done");
+        if (btnGroupDone) {
+            btnGroupDone.addEventListener("click", async function () {
+
+                const selectedStations = getSelectedGroupStations();
+
+                const payload = {
+                    group_representative: document.getElementById("group_representative").value.trim(),
+                    purpose:              document.getElementById("group_purpose").value.trim(),
+                    gsfe_email:           document.getElementById("group_gsfe_email").value.trim(),
+                    date:                 groupDateInput.value,
+                    location:             groupLocationSelect.value,
+                    start_time:           groupStartInput.value,
+                    end_time:             groupEndInput.value,
+                    stations:             selectedStations,
+                };
+
+                for (const key of ["group_representative", "purpose", "gsfe_email", "date", "location", "start_time", "end_time"]) {
+                    if (!payload[key]) {
+                        showConfirmation(false, "Please fill in all required fields before submitting.");
+                        return;
+                    }
+                }
+
+                if (selectedStations.length === 0) {
+                    showConfirmation(false, "Please select at least one station to reserve.");
+                    return;
+                }
+
+                const slotError = validateAppointmentSlot(payload.date, payload.start_time, payload.end_time);
+                if (slotError) {
+                    showConfirmation(false, slotError);
+                    return;
+                }
+
+                showConfirmation(null, "Submitting your group appointment, please wait...");
+
+                try {
+                    const response = await fetch("/submit-group-appointment", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok && result.success) {
+                        showConfirmation(
+                            true,
+                            `Group appointment confirmed! Reference No: ${result.group_id} ` +
+                            `(${result.stations.join(", ")}). ` +
+                            (result.email_sent
+                                ? "A confirmation email with QR codes for each station has been sent to the group's GSFE email."
+                                : "However, the confirmation email could not be sent — please contact the system administrator.")
+                        );
+                        document.getElementById("group-appointment-form").reset();
+                        setGroupStationHint(
+                            "Fill in Date, Location, Start Time, and End Time above to see available stations."
+                        );
+                        renderGroupStationCheckboxes(null);
+                        fetchStationStatus();  // reflect the new bookings right away
+                    } else {
+                        showConfirmation(false, result.message || "Failed to schedule the group appointment. Please try again.");
+                    }
+                } catch (err) {
+                    showConfirmation(false, "Could not connect to the server. Please check your connection and try again.");
+                }
+            });
+        }
+
+        const btnGroupClear = document.getElementById("btn-group-clear");
+        if (btnGroupClear) {
+            btnGroupClear.addEventListener("click", function () {
+                document.getElementById("group-appointment-form").reset();
+                setGroupStationHint(
+                    "Fill in Date, Location, Start Time, and End Time above to see available stations."
+                );
+                renderGroupStationCheckboxes(null);
+                hideConfirmation();
+            });
+        }
+
+        // -------------------------------------------------------
+        // CONFIRMATION BANNER HELPERS
+        // status: true = success, false = error, null = pending/info
+        // -------------------------------------------------------
+
+        function showConfirmation(status, message) {
+            const banner = document.getElementById("confirmation-banner");
+            if (!banner) {
+                return;
+            }
+            banner.textContent = message;
+            banner.classList.remove("confirmation-success", "confirmation-error", "confirmation-pending");
+
+            if (status === true) {
+                banner.classList.add("confirmation-success");
+            } else if (status === false) {
+                banner.classList.add("confirmation-error");
+            } else {
+                banner.classList.add("confirmation-pending");
+            }
+            banner.style.display = "block";
+        }
+
+        function hideConfirmation() {
+            const banner = document.getElementById("confirmation-banner");
+            if (!banner) {
+                return;
+            }
+            banner.style.display = "none";
+        }
+
+        // -------------------------------------------------------
+        // BUSINESS HOURS VALIDATION (client-side)
+        // Reservations are only allowed Monday-Friday, 8:00 AM -
+        // 5:00 PM. This mirrors the authoritative check the server
+        // performs in /submit-appointment - this copy just gives
+        // the user immediate feedback without a round-trip.
+        // -------------------------------------------------------
+
+        const BUSINESS_START_MIN = 8 * 60;       // 8:00 AM in minutes-from-midnight
+        const BUSINESS_END_MIN   = 17 * 60;      // 5:00 PM in minutes-from-midnight
+
+        function timeStrToMinutes(timeStr) {
+            // timeStr is "HH:MM" (24-hour), as produced by <input type="time">
+            const [h, m] = timeStr.split(":").map(Number);
+            return (h * 60) + m;
+        }
+
+        function validateAppointmentSlot(dateStr, startStr, endStr) {
+            // Parse as a local date (avoid UTC shift from "YYYY-MM-DD" strings)
+            const [y, mo, d] = dateStr.split("-").map(Number);
+            const dateObj = new Date(y, mo - 1, d);
+            const day = dateObj.getDay(); // 0 = Sunday, 6 = Saturday
+
+            if (day === 0 || day === 6) {
+                return "Reservations are only available Monday through Friday.";
+            }
+
+            const startMin = timeStrToMinutes(startStr);
+            const endMin = timeStrToMinutes(endStr);
+
+            if (startMin < BUSINESS_START_MIN || startMin > BUSINESS_END_MIN) {
+                return "Start Time must be between 8:00 AM and 5:00 PM.";
+            }
+            if (endMin < BUSINESS_START_MIN || endMin > BUSINESS_END_MIN) {
+                return "End Time must be between 8:00 AM and 5:00 PM.";
+            }
+            if (endMin <= startMin) {
+                return "End Time must be later than Start Time.";
+            }
+
+            return null; // valid
+        }
+
+        // -------------------------------------------------------
+        // APPOINTMENT FORM SUBMISSION
+        // Sends the form data to Flask (/submit-appointment) via
+        // fetch(). The backend stores it in MySQL, generates a
+        // unique ID number, and emails the confirmation.
+        // -------------------------------------------------------
+
+        const btnDone = document.getElementById("btn-done");
+        if (btnDone) {
+            btnDone.addEventListener("click", async function () {
+
+                const payload = {
+                    first_name:  document.getElementById("first_name").value.trim(),
+                    last_name:   document.getElementById("last_name").value.trim(),
+                    mi:          document.getElementById("mi").value.trim(),
+                    gsfe_email:  document.getElementById("gsfe_email").value.trim(),
+                    date:        document.getElementById("appt_date").value,
+                    station_no:  document.getElementById("station_no").value,
+                    location:    document.getElementById("appt_location").value,
+                    start_time:  document.getElementById("start_time").value,
+                    end_time:    document.getElementById("end_time").value,
+                };
+
+                // Basic client-side validation
+                for (const key in payload) {
+                    if (!payload[key]) {
+                        showConfirmation(false, "Please fill in all required fields before submitting.");
+                        return;
+                    }
+                }
+
+                // Business-hours validation (weekdays, 8:00 AM - 5:00 PM only)
+                const slotError = validateAppointmentSlot(payload.date, payload.start_time, payload.end_time);
+                if (slotError) {
+                    showConfirmation(false, slotError);
+                    return;
+                }
+
+                showConfirmation(null, "Submitting your appointment, please wait...");
+
+                try {
+                    const response = await fetch("/submit-appointment", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok && result.success) {
+                        showConfirmation(
+                            true,
+                            `Appointment confirmed! Reference No: ${result.id_number}. ` +
+                            (result.email_sent
+                                ? "A confirmation email with your QR code has been sent to your GSFE email."
+                                : "However, the confirmation email could not be sent — please contact the system administrator.")
+                        );
+                        document.getElementById("appointment-form").reset();
+                        fetchStationStatus();  // reflect the new booking right away
+                    } else {
+                        showConfirmation(false, result.message || "Failed to schedule the appointment. Please try again.");
+                    }
+                } catch (err) {
+                    showConfirmation(false, "Could not connect to the server. Please check your connection and try again.");
+                }
+            });
+        }
+
+        const btnClear = document.getElementById("btn-clear");
+        if (btnClear) {
+            btnClear.addEventListener("click", function () {
+                document.getElementById("appointment-form").reset();
+                hideConfirmation();
+            });
+        }
+
+        // -------------------------------------------------------
+        // INIT
+        // -------------------------------------------------------
+        renderDateTime();
+        fetchStationStatus();               // initial load from the database
+        setInterval(renderDateTime, 1000);
+        setInterval(fetchStationStatus, 15000);  // refresh availability every 15 seconds
+
+        // Re-fetch immediately when the viewer switches location
+        const dashboardLocationSelect = document.getElementById("dashboard-location-select");
+        if (dashboardLocationSelect) {
+            dashboardLocationSelect.addEventListener("change", fetchStationStatus);
+        }
+    </script>
+</body>
+</html>

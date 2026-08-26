@@ -1,0 +1,1285 @@
+/* Kiosk System Style Sheet */
+
+/* GENERAL */
+
+html, body, input, button, select, textarea {
+    font-family:Poppins, Arial, sans-serif;
+}
+
+body{
+    margin:3;
+    padding:3px;
+    background-image: url("/static/tupclc_background.png");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
+
+/* ================= LOGIN PAGE ================= */
+
+.login-body{
+    background:#d9d9d9;
+}
+
+.login-container{
+    width:400px;
+    margin:100px auto;
+    padding:30px;
+    background:#e5e5e5;
+    border:2px solid black;
+    border-radius:20px;
+}
+
+.login-container h3{
+    color:#c81d3a;
+    margin:0;
+}
+
+.login-container h1{
+    color:#c81d3a;
+    margin-top:5px;
+    margin-bottom:30px;
+}
+
+.login-container label{
+    font-weight:bold;
+}
+
+.login-container input{
+    width:100%;
+    padding:12px;
+
+    margin-top:10px;
+    margin-bottom:20px;
+
+    border:1px solid gray;
+    border-radius:20px;
+
+    box-sizing:border-box;
+}
+
+.login-btn{
+    width:100%;
+    padding:12px;
+
+    background:#c81d3a;
+    color:white;
+
+    border:none;
+    border-radius:20px;
+
+    cursor:pointer;
+
+    font-weight:bold;
+}
+
+/* FORGOT PASSWORD BUTTON */
+
+.forgot-btn{
+    width:100%;
+
+    padding:12px;
+
+    margin-top:10px;
+
+    background:#444;
+    color:white;
+
+    border:none;
+    border-radius:20px;
+
+    cursor:pointer;
+
+    font-weight:bold;
+}
+
+.forgot-btn:hover{
+    background:#333;
+}
+
+/* PASSWORD BOX */
+
+.password-box{
+    position:relative;
+}
+
+.password-box input{
+    width:100%;
+    padding:5px;
+    padding-right:45px;
+
+    margin-top:10px;
+    margin-bottom:20px;
+
+    border:1px solid gray;
+    border-radius:20px;
+
+    box-sizing:border-box;
+}
+
+.eye{
+    position:absolute;
+
+    right:15px;
+    top:50%;
+
+    transform:translateY(-50%);
+
+    cursor:pointer;
+
+    font-size:16px;
+
+    color:#555;
+}
+
+/* ================= DASHBOARD ================= */
+
+
+.navbar{
+    padding:20px;
+    margin-bottom:-28px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+.navbar-menu-btn.active{
+    color:#c81d3a;
+    font-weight:bold;
+}
+
+.navbar h2{
+    color:#c81d3a;
+    font-size:23px;
+    margin-top:0px;
+    margin-bottom:-20px;
+}
+
+.menu{
+    display:flex;
+    align-items:left;
+    margin-left: 10px;
+    margin-top: -15px;
+    gap:12px;
+}
+
+.menu a{
+    text-decoration:none;
+    margin-left:15px;
+    color:black;
+    font-weight:medium;
+    opacity: 0.95;
+    transition: color 0.3s ease, opacity 0.3s ease;
+}
+
+.menu a:hover{
+    color:#c81d3a;
+    opacity: 1;
+}
+
+.navbar-content h4,
+.navbar-content h2 {
+    margin: -9px -10px 0 0;
+    margin-left: -7px;
+}
+
+.navbar-content h4 {
+    margin-bottom: 0.2px;
+}
+
+h4 {
+    font-size: 13px;
+    font-weight: normal;
+}
+
+.navbar-content {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.navbar-logo img {
+    width: 50px;
+    height: 50px;
+    margin-top: -7px;
+    object-fit: contain;
+}
+
+.main-content{
+    display:flex;
+    gap:20px;
+    padding:20px;
+
+    align-items:flex-start;
+}
+
+/* LEFT PANEL - AVAILABILITY STATUS */
+
+.left-panel{
+    flex:1;
+}
+
+.status-card{
+    background:#e5e5e5;
+
+    border:2px solid black;
+    border-radius:20px;
+
+    padding:20px;
+
+    overflow:hidden;
+}
+
+.status-card h1{
+    color:#c81d3a;
+    margin-top:-10px;
+    margin-bottom:-5px;
+    font-size:27px;
+}
+
+/* LEFT PANEL - TOP STATUS */
+
+.top-status{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    margin-bottom:10px;
+}
+
+.status-left{
+    flex:2;
+    align-self:flex-start ;
+}
+
+.date-time{
+    margin:-7px 0 10px 0;
+    font-size:15px;
+    font-weight:semibold;
+}
+
+.location-label{
+    display:block;
+    margin-top:-5px;
+    margin-bottom:5px;
+    font-size:13px;
+}
+
+.location-select{
+    height:30px;
+    width:570px;
+    padding:5px 10px;
+    border:2px solid #000000;
+    border-radius:25px;
+    margin-top:-5px;
+    margin-right:20px;
+    background:white;
+    font:100% Poppins, Arial, sans-serif;
+    font-size:13px;
+    line-height:30px;
+    box-sizing:border-box;
+}
+
+.status-right{
+    font-size:13px;
+    line-height:0.3;
+    width:80px;
+    margin-right:15px;
+    margin-top:-35px;
+}
+
+/* LEFT PANEL - STATIONS GRID */
+
+.stations{
+    display:grid;
+
+    grid-template-columns:repeat(5,1fr);
+
+    gap:10px;
+}
+
+.station{
+    min-height:155px;
+    padding:12px 10px 10px;
+
+    border-radius:10px;
+
+    color:white;
+    font-weight:bold;
+
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+}
+
+.password-box{
+    position:relative;
+}
+
+.password-box h4{
+    transform:translateY(-50%); 
+    font-size:16px;
+    margin-top:10px;
+    font-weight:medium;
+    color:#000000;
+}
+
+.vacant{
+    background:#2e8b57;
+}
+
+.occupied{
+    background:#c81d3a;
+}
+
+.reserved{
+    background:#c79a3b;
+}
+
+.closed{
+    background:#444; 
+}
+
+/* BUTTONS */
+
+
+.buttons{
+    margin-top:10px;
+    margin-bottom:-5px;
+
+    display:flex;
+    justify-content:flex-end;
+
+    gap:10px;
+}
+
+.clear-btn{
+    border: none;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 18px;
+    cursor: pointer;
+    background: transparent;
+    font-weight: bold   ;
+}
+
+.gray-btn{
+    border: none;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 18px;
+    border-radius: 20px;
+    cursor: pointer;
+    color: white;
+    font-weight: normal;
+}
+
+.red-btn{
+    border: none;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 18px;
+    border-radius: 20px;
+    cursor: pointer;
+    color: white;
+    font-weight: bold;
+}
+
+.gray-btn{
+    background:#444;
+}
+
+.red-btn{
+    background:#c81d3a;
+}
+
+/* RIGHT PANEL - SCHEDULE APPOINTMENT */
+
+.right-panel{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:20px;
+    min-width:320px;
+}
+
+/* RIGHT PANEL */
+
+.right-panel{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:20px;
+    min-width:320px;
+}
+
+.card{
+    background:#e5e5e5;
+    border:2px solid black;
+    border-radius:20px;
+    padding:20px;
+    overflow:hidden;
+}
+
+.card h2{
+    color:#c81d3a;
+    margin-top:-10px;
+    margin-bottom:-5px;
+    font-size:27px;
+}
+
+.qrstatus{
+    color:#888;
+    font-size:45px;
+    font-weight:bold;
+    text-align:center;
+    margin:-5px 0px -12px 0px;
+}
+
+.qrstatus-verified{
+    color:#2e8b57;
+}
+
+.qrstatus-invalid{
+    color:#c81d3a;
+}
+
+.qrstatus-expired{
+    color:#c79a3b;
+}
+
+.qrstatus-signedout{
+    color:#3b6ec7;
+}
+
+.qr-scan-input{
+    width:100%;
+    padding:10px 14px;
+
+    margin-top:20px;
+
+    border:2px solid #000000;
+    border-radius:20px;
+
+    box-sizing:border-box;
+    font-size:13px;
+    text-align:center;
+}
+
+.card button{
+    margin-top:10px;
+    margin-bottom:-5px;
+    display:flex;
+    justify-content:flex-end;
+
+    gap:10px;
+}
+
+/* APPOINTMENT DETAILS */
+
+.appointment-card{
+    padding:15px 18px;
+}
+
+
+.appointment-info{
+    display:flex;
+    gap:25px;
+    font-size:14px;
+    line-height:1.3;
+}
+
+.label-column p{
+    margin:6px 0;
+    font-weight:bold;
+}
+
+.value-column p{
+    margin:6px 0;
+}
+
+.appointment-button{
+    display:flex;
+    justify-content:flex-end;
+    margin-top:10px;
+}
+
+.small-red-btn{
+    background:#c81d3a;
+    color:white;
+    border:none;
+    padding:6px 18px;
+    border-radius:20px;
+    font-size:12px;
+    cursor:pointer;
+}
+/* OPENING HOURS */
+
+.opening-card{
+    padding:15px 18px;
+}
+
+.opening-card h2{
+    color:#c81d3a;
+    margin-top:-10px;
+    margin-bottom:-5px;
+    font-size:27px;
+}
+
+.opening-time{
+    margin:0;
+
+    font-size:14px;
+    font-weight:bold;
+
+    color:#000000;
+}
+
+.opening-note{
+    margin-top:3px;
+
+    font-size:11px;
+
+    color:#000000;
+}
+
+/* ================= MANAGE STATIONS ================= */
+
+.manage-panel{
+    flex:1;
+}
+
+.status-card{
+    background:#e5e5e5;
+
+    border:2px solid black;
+    border-radius:20px;
+
+    padding:20px;
+
+    overflow:hidden;
+}
+
+.status-card h1{
+    color:#c81d3a;
+    margin-top:-10px;
+    margin-bottom:2px;
+    font-size:27px;
+}
+
+
+.manage-controls{
+    display:flex;
+
+    align-items:center;
+
+    gap:10px;
+}
+
+.manage-location-select{
+    height:30px;
+    width:100%;
+    padding:5px 10px;
+    border:2px solid #000000;
+    border-radius:25px;
+    margin-top:-5px;
+    margin-right:20px;
+    background:white;
+    font:100% Poppins, Arial, sans-serif;
+    font-size:13px;
+    line-height:30px;
+    box-sizing:border-box;
+}
+
+.station-table{
+    width:100%;
+    border-collapse:collapse;
+}
+
+.station-table th{
+    text-align:left;
+
+    padding:5px 10px;
+    border-bottom:2px solid #bbb;
+
+    font-size:16px;
+}
+
+.station-table td{
+    padding:5px 10px;
+
+    border-bottom:1px solid #ccc;
+
+    font-size:16px;
+}
+
+.vacant-text{
+    color:#2e8b57;
+    font-weight:bold;
+}
+
+.occupied-text{
+    color:#c81d3a;
+    font-weight:bold;
+}
+
+.reserved-text{
+    color:#c79a3b;
+    font-weight:bold;
+}
+
+.open-text{
+    color:#2e8b57;
+}
+
+.table-buttons{
+    text-align:right;
+}
+
+.table-btn{
+    padding:6px 14px;
+
+    min-width:auto;
+
+    font-size:12px;
+
+    margin-left:5px;
+}
+
+.small-btn{
+    padding:8px 15px;
+
+    min-width:auto;
+
+    font-size:12px;
+}
+
+.add-button-container{
+    display:flex;
+
+    justify-content:flex-end;
+
+    margin-top:15px;
+}
+
+.add-btn{
+    padding:8px 18px;
+
+    min-width:auto;
+
+    font-size:12px;
+}
+
+.active{
+    color:#c81d3a !important;
+}
+
+/* TAB LINKS */
+
+.tab-link{
+    flex:1;
+
+    text-decoration:none;
+}
+
+/*  Confirmation Banner */
+
+.confirmation-banner{
+    display:none;
+
+    padding:12px 16px;
+
+    margin-top:-5px;
+    margin-bottom:15px;
+
+    border-radius:12px;
+
+    font-size:13px;
+    font-weight:bold;
+
+    line-height:1.4;
+}
+
+.confirmation-success{
+    background:#d9f2e3;
+    color:#1e7e34;
+    border:2px solid #2e8b57;
+}
+
+.confirmation-error{
+    background:#fbdde2;
+    color:#a71d2a;
+    border:2px solid #c81d3a;
+}
+
+.confirmation-pending{
+    background:#fbf1d3;
+    color:#8a6d1d;
+    border:2px solid #c79a3b;
+}
+
+
+/* =============== SCHEDULING ================== */
+
+.schedule-card{
+    width:50%;
+}
+
+.schedule-filters select{
+    flex:1;
+
+    padding:6px 10px;
+    border:2px solid #000000;
+    border-radius:20px;
+}
+
+/* Calendar */
+
+.calendar{
+    width:100%;
+
+    border-collapse:collapse;
+
+    text-align:center;
+}
+
+.calendar th{
+    padding:10px;
+
+    background:#f5f5f5;
+
+    font-size:14px;
+}
+
+.calendar td{
+    width:14%;
+
+    height:55px;
+
+    border:1px solid #ccc;
+
+    vertical-align:top;
+
+    padding-top:5px;
+
+    font-weight:bold;
+}
+
+.red-date{
+    color:#c81d3a;
+}
+
+.inactive{
+    color:#bbb;
+}
+
+/* Live calendar day cells (Scheduling page) */
+
+.calendar td{
+    position:relative;
+    text-align:left;
+    padding-left:6px;
+    padding-right:6px;
+}
+
+.calendar-day-number{
+    text-align:center;
+}
+
+.today-date{
+    background:#fdf3d9;
+    box-shadow:inset 0 0 0 2px #c79a3b;
+    border-radius:6px;
+}
+
+.calendar td.has-reserved{
+    box-shadow:inset 0 -4px 0 0 #c79a3b;
+}
+
+.calendar td.has-occupied{
+    box-shadow:inset 0 -4px 0 0 #c81d3a;
+}
+
+.today-date.has-reserved{
+    box-shadow:inset 0 0 0 2px #c79a3b, inset 0 -4px 0 0 #c79a3b;
+}
+
+.today-date.has-occupied{
+    box-shadow:inset 0 0 0 2px #c79a3b, inset 0 -4px 0 0 #c81d3a;
+}
+
+.calendar-events{
+    margin-top:4px;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+}
+
+.calendar-event{
+    font-size:9px;
+    font-weight:normal;
+    line-height:1.25;
+    padding:2px 4px;
+    border-radius:5px;
+    color:white;
+    white-space:normal;
+    word-break:break-word;
+}
+
+.event-reserved{
+    background:#c79a3b;
+}
+
+.event-occupied{
+    background:#c81d3a;
+}
+
+
+/* False Appointments Table */
+.false-table{
+    width:100%;
+    border-collapse:collapse;
+}
+
+.false-table th{
+    text-align:left;
+    padding:4px 5px;
+    border-bottom:2px solid #ccc;
+    font-size:14px;
+}
+
+.false-table td{
+    padding:4px 5px;
+    border-bottom:1px solid #ddd;
+    font-size:13px;
+}
+
+.false-table .red-btn{
+    padding:0px 15px;
+    font-size:12px;
+    margin-top:2px;
+}
+
+/* ================= LOGIN MANAGEMENT ================= */
+
+.history-tabs{
+    flex:1;
+    margin-top: 20px;
+    margin-bottom: -10px;
+    margin-left: 20px;
+    margin-right: 20px;
+}
+
+.tab-link {
+    display:flex;
+    align-items:center;
+}
+
+.tab-btn-left {
+    flex:1 1 auto;
+    min-width:0;
+    box-sizing:border-box;
+    height:34px;
+    border:2px solid #000000;
+    border-radius:20px;
+    background:white;
+    color:#000;
+    font:600 13px Poppins, Arial, sans-serif;
+    cursor:pointer;
+    margin-right:3px;
+}
+
+.tab-btn-right {
+    flex:1 1 auto;
+    min-width:0;
+    box-sizing:border-box;
+    height:34px;
+    border:2px solid #000000;
+    border-radius:20px;
+    background:white;
+    color:#000;
+    font:600 13px Poppins, Arial, sans-serif;
+    cursor:pointer;
+    margin-left:3px;
+}
+
+.active-tab{
+    flex:1 1 auto;
+    min-width:0;
+    box-sizing:border-box;
+    height:34px;
+    border:2px solid #000000;
+    border-radius:20px;
+    background:#c81d3a;
+    color: #ffffff;
+    font:600 13px Poppins, Arial, sans-serif;
+    cursor:pointer;
+    margin-left:3px;
+}
+
+.history-container{
+    margin:10px 15px 20px 15px;
+
+    padding:15px;
+
+    background:#e5e5e5;
+
+    border:2px solid black;
+    border-radius:20px;
+}
+
+.history-top{
+    display:flex;
+
+    justify-content:space-between;
+    align-items:center;
+
+    margin-bottom:10px;
+}
+
+.history-top h1{
+    color:#c81d3a;
+    margin-top:-10px;
+    margin-bottom:2px;
+    font-size:27px;
+}
+
+.history-filter{
+    display:flex;
+
+    align-items:center;
+
+    gap:10px;
+
+    margin-bottom:15px;
+
+    font-size:14px;
+}
+
+.history-filter select{
+    padding:5px 10px;
+
+    border:2px solid #000000;
+    border-radius:20px;
+
+    background:white;
+    font-size:13px;
+}
+
+.history-filter label{
+    font-weight:bold;
+}
+
+.history-table{
+    width:100%;
+
+    border-collapse:collapse;
+}
+
+.history-table th{
+    text-align:left;
+
+    padding:8px 5px;
+
+    border-bottom:2px solid #ccc;
+
+    font-size:13px;
+}
+
+.history-table td{
+    padding:8px 5px;
+
+    border-bottom:1px solid #ddd;
+
+    font-size:12px;
+}
+
+/* =========================================================
+   TIMELINE AVAILABILITY VIEW (Learning Stations Availability
+   Status page). Added below without changing any rule above.
+   ========================================================= */
+
+/* Pill-style date input to match the mockup */
+.date-pill{
+    height:34px;
+    padding:0 14px;
+    border:2px solid #000000;
+    border-radius:20px;
+    background:white;
+    font:600 13px Poppins, Arial, sans-serif;
+    box-sizing:border-box;
+}
+
+/* Pill-style location dropdown (kiosk header) */
+.location-pill{
+    height:34px;
+    padding:0 14px;
+    min-width:320px;
+    border:2px solid #000000;
+    border-radius:20px;
+    background:white;
+    font:13px Poppins, Arial, sans-serif;
+    box-sizing:border-box;
+}
+
+/* Pill-style primary action button */
+.pill-btn{
+    height:34px;
+    padding:0 18px;
+    border:2px solid #000000;
+    border-radius:20px;
+    background:white;
+    color:#000;
+    font:600 13px Poppins, Arial, sans-serif;
+    cursor:pointer;
+}
+
+.pill-btn:hover{
+    background:#f0f0f0;
+}
+
+/* Quick counts row above the timeline */
+.status-summary{
+    display:flex;
+    gap:20px;
+    margin:10px 2px 6px;
+    font-size:13px;
+    font-weight:bold;
+    color:#333;
+}
+
+/* Weekend / after-hours notice */
+.closed-notice{
+    padding:14px 16px;
+    margin:10px 0;
+    background:#444;
+    color:white;
+    border-radius:12px;
+    font-weight:bold;
+    text-align:center;
+}
+
+/* Outer row: left arrow | scrollable grid | right arrow */
+.timeline-outer{
+    display:flex;
+    align-items:stretch;
+    gap:6px;
+    margin-top:6px;
+}
+
+.scroll-btn{
+    flex:0 0 auto;
+    width:32px;
+    border:none;
+    background:transparent;
+    color:#444;
+    font-size:26px;
+    font-weight:bold;
+    cursor:pointer;
+    align-self:center;
+}
+
+.scroll-btn:hover{
+    color:#c81d3a;
+}
+
+/* Scrollable container that holds the CSS grid timeline */
+.timeline-scroll{
+    flex:1 1 auto;
+    overflow-x:auto;
+    overflow-y:hidden;
+    border-radius:12px;
+    background:#f7f7f7;
+    border:1px solid #d0d0d0;
+}
+
+/* The grid itself: column 1 = time labels, columns 2..N = stations */
+.timeline-grid{
+    position:relative;
+    display:grid;
+    min-width:max-content;
+}
+
+.tl-corner{
+    position:sticky;
+    left:0;
+    z-index:3;
+    background:#f7f7f7;
+}
+
+/* Station name header cells */
+.tl-station-header{
+    position:sticky;
+    top:0;
+    z-index:2;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:bold;
+    font-size:13px;
+    color:#222;
+    background:#f7f7f7;
+    border-bottom:2px solid #ccc;
+    padding:4px;
+    box-sizing:border-box;
+}
+
+/* Time-of-day labels along the left edge */
+.tl-time-label{
+    position:sticky;
+    left:0;
+    z-index:1;
+    background:#f7f7f7;
+    font-size:12px;
+    font-weight:600;
+    color:#333;
+    transform:translateY(-50%);
+    padding-left:6px;
+    box-sizing:border-box;
+    white-space:nowrap;
+}
+
+/* Full-width horizontal hour line, sits behind the appointment blocks */
+.tl-gridline{
+    border-top:1px solid #d5d5d5;
+    height:0;
+    align-self:start;
+}
+
+/* Appointment block (reserved / occupied) */
+.tl-block{
+    margin:2px 4px;
+    border-radius:8px;
+    color:white;
+    font-weight:bold;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding:6px 4px;
+    box-sizing:border-box;
+    overflow:hidden;
+    z-index:1;
+}
+
+.tl-block.reserved{
+    background:#c79a3b;
+}
+
+.tl-block.occupied{
+    background:#c81d3a;
+}
+
+.tl-block.vacant{
+    background:#2e8b57;
+}
+
+.tl-block.closed{
+    background:#444;
+}
+
+.tl-block-status{
+    font-size:12px;
+    line-height:1.2;
+}
+
+.tl-block-time{
+    font-size:10px;
+    font-weight:normal;
+    margin-top:2px;
+    line-height:1.2;
+}
+
+/* =========================================================
+   MANAGE STATIONS / MANAGE LOCATIONS (added below without
+   changing any rule above).
+   ========================================================= */
+
+/* "Closed" text in the manage-stations table's Open/Closed column */
+.closed-text{
+    color:#444;
+    font-weight:bold;
+}
+
+/* -------- Overlay (confirm remove / manage locations) -------- */
+
+.overlay-backdrop{
+    display:none;
+
+    position:fixed;
+    top:0;
+    left:0;
+    right:0;
+    bottom:0;
+
+    background:rgba(0,0,0,0.5);
+
+    align-items:center;
+    justify-content:center;
+
+    z-index:1000;
+}
+
+.overlay-backdrop.show{
+    display:flex;
+}
+
+.overlay-box{
+    width:420px;
+    max-width:90vw;
+    max-height:85vh;
+
+    overflow-y:auto;
+
+    background:#e5e5e5;
+    border:2px solid black;
+    border-radius:20px;
+
+    padding:20px 24px;
+}
+
+.overlay-box h3{
+    color:#c81d3a;
+    margin-top:0;
+    margin-bottom:12px;
+    font-size:20px;
+}
+
+.overlay-box p{
+    font-size:14px;
+    line-height:1.4;
+}
+
+.overlay-buttons{
+    display:flex;
+    justify-content:flex-end;
+    gap:10px;
+    margin-top:16px;
+}
+
+/* Add-a-location row inside the Manage Locations overlay */
+.add-location-row{
+    display:flex;
+    gap:10px;
+    margin-top:14px;
+}
+
+.add-location-row input{
+    flex:1;
+    padding:8px 14px;
+
+    border:2px solid #000000;
+    border-radius:20px;
+
+    box-sizing:border-box;
+    font-size:13px;
+    font-family:Poppins, Arial, sans-serif;
+}

@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Dashboard | TUPC Learning Commons Management</title>
+</head>
+
+<body>
+    <!-- NAVIGATION BAR -->
+    <div class="navbar">
+        <div class="navbar-content">
+            <div class="navbar-logo">
+                <img src="{{ url_for('static', filename='tuplogo.png') }}" alt="Logo">
+            </div>
+            <div>
+                <h4>Technological University of the Philippines - Cavite</h4>
+                <h2>Learning Commons Management</h2>
+            </div>
+        </div>
+        <nav class="menu">
+            <a href="/dashboard" class="navbar-menu-btn active">Home</a>
+            <a href="/manage-stations" class="navbar-menu-btn">Learning Commons</a>
+            <a href="/scheduling" class="navbar-menu-btn">Scheduling</a>
+            <a href="/login-management" class="navbar-menu-btn">Login Management</a>
+            <a href="#" class="navbar-menu-btn">Account</a>
+        </nav>
+    </div>
+
+<!-- ==================================================== -->
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content" style="gap: 1rem;">
+
+        <!-- LEFT PANEL -->
+        <div class="left-panel">
+            <div class="status-card">
+                <h1>Availability Status</h1>
+
+                <!-- TOP STATUS -->
+                <div class="top-status">
+
+                    <!-- LEFT -->
+                    <div class="status-left">
+                        <p class="date-time" id="datetime-display"></p>
+
+                        <label class="location-label">Location:</label>
+
+                        <select id="dashboard-location-select" class="location-select">
+                            <option value="Main Learning Commons">Main Learning Commons</option>
+                            <option value="Learning Commons 2">Learning Commons 2</option>
+                        </select>
+                    </div>
+
+                    <!-- RIGHT -->
+                    <div class="status-right" id="status-summary"></div>
+                </div>
+
+                <!-- STATIONS -->
+                <div class="stations" id="stations-container"></div>
+
+                <!-- BUTTONS -->
+                <div class="buttons">
+                    <button class="gray-btn" type="button" onclick="window.location.href='detailed-status'">Generate Report</button>
+                    <button class="gray-btn" type="button" onclick="window.location.href='detailed-status'">Manage Stations</button>
+                </div>
+            </div>
+        </div>
+
+<!-- ==================================================== -->
+
+              <!-- RIGHT PANEL -->
+        <div class="right-panel">
+
+            <!-- QR VERIFICATION -->
+            <div class="card">
+
+                <h2>QR Code Verification</h2>
+
+                <h1 class="qrstatus" id="qrstatus-text">
+                    ---
+                </h1>
+
+                <input
+                    type="text"
+                    id="qr-scan-input"
+                    class="qr-scan-input"
+                    placeholder="Scan student QR code..."
+                    autocomplete="off"
+                    autofocus
+                >
+
+            </div>
+
+            <!-- APPOINTMENT DETAILS -->
+            <div class="card appointment-card">
+
+                <h2>Appointment Details</h2>
+
+                <div class="appointment-info">
+
+                    <div class="label-column">
+
+                        <p>Name:</p>
+                        <p>Date:</p>
+                        <p>Time in:</p>
+                        <p>Time out:</p>
+                        <p>Location:</p>
+                        <p>Station:</p>
+
+                    </div>
+
+                    <div class="value-column">
+
+                        <p id="appt-name">---</p>
+                        <p id="appt-date">---</p>
+                        <p id="appt-timein">---</p>
+                        <p id="appt-timeout">---</p>
+                        <p id="appt-location">---</p>
+                        <p id="appt-station">---</p>
+
+                    </div>
+
+                </div>
+
+                <div class="appointment-button">
+
+                    <button class="small-red-btn" id="btn-appointment-close" type="button">
+                        Close
+                    </button>
+
+                </div>
+
+            </div>
+
+            <!-- OPENING HOURS -->
+            <div class="card opening-card">
+                <h2>Opening Hours</h2>
+
+                <p class="opening-time">
+                    Weekdays, 8:00 AM to 5:00 PM
+                </p>
+
+                <p class="opening-note">
+                    (except for holidays)
+                </p>
+
+            </div>
+
+        </div>
+    </div>
+
+<!-- ==================================================== -->
+
+    <script>
+
+        // -------------------------------------------------------
+        // STATION DATA (now pulled live from the database)
+        // stationsData is refreshed by fetchStationStatus() below
+        // instead of being hardcoded. Valid statuses returned by
+        // the backend: "vacant", "occupied", "reserved"
+        // -------------------------------------------------------
+
+        let stationsData = [];
+
+        // -------------------------------------------------------
+        // STATUS LABELS
+        // -------------------------------------------------------
+
+        const statusLabels = {
+            vacant:   "Vacant",
+            occupied: "Occupied",
+            reserved: "Reserved",
+            closed:   "Closed",
+        };
+
+        function isStationClosedNow() {
+            const now = new Date();
+            const day = now.getDay(); // 0 = Sunday, 6 = Saturday
+
+            if (day === 0 || day === 6) {
+                return true;
+            }
+
+            const hour = now.getHours();
+            return hour < 8 || hour >= 17;
+        }
+
+        function applyClosedStatus(stations) {
+            if (!isStationClosedNow()) {
+                return;
+            }
+
+            stations.forEach(function(station) {
+                station.status = "closed";
+            });
+        }
+
+        // -------------------------------------------------------
+        // FETCH STATION STATUS FROM THE SERVER
+        // Calls /api/station-status, which reads today's appointments
+        // from learning_commons_db and derives each station's current
+        // status based on the real clock time. Filters by whichever
+        // location is selected in the dropdown.
+        // -------------------------------------------------------
+
+        async function fetchStationStatus() {
+            const locationSelect = document.getElementById("dashboard-location-select");
+            const location = locationSelect ? locationSelect.value : "Main Learning Commons";
+
+            try {
+                const response = await fetch(`/api/station-status?location=${encodeURIComponent(location)}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    console.error("Failed to load station status:", result.message);
+                    return;
+                }
+
+                // Convert the {stationName: {...}} object from the API
+                // into the array shape renderStations()/renderSummary() expect.
+                stationsData = Object.entries(result.stations).map(([name, info], index) => ({
+                    id: index + 1,
+                    name: name,
+                    status: info.status,
+                    timeStart: info.start_time,
+                    timeEnd: info.end_time,
+                }));
+
+                // Ensure stations are ordered numerically by station number (Station 1..10)
+                stationsData.sort(function(a, b) {
+                    function stationNum(s) {
+                        const m = s.name.match(/(\d+)$/);
+                        return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+                    }
+                    return stationNum(a) - stationNum(b);
+                });
+
+                applyClosedStatus(stationsData);
+                renderStations();
+                renderSummary();
+            } catch (err) {
+                console.error("Could not reach /api/station-status:", err);
+            }
+        }
+
+        // -------------------------------------------------------
+        // RENDER STATIONS
+        // -------------------------------------------------------
+
+        function renderStations() {
+            const container = document.getElementById("stations-container");
+            container.innerHTML = "";
+
+            stationsData.forEach(function(station) {
+                const wrapper = document.createElement("div");
+                wrapper.className = "station-wrapper";
+
+                const label = document.createElement("div");
+                label.className = "station-label";
+                label.textContent = station.name;
+
+                const stationCard = document.createElement("div");
+                stationCard.className = "station " + station.status;
+
+                const statusText = document.createElement("div");
+                statusText.className = "station-status";
+                statusText.textContent = statusLabels[station.status] || station.status;
+
+                const timeText = document.createElement("div");
+                timeText.className = "station-time";
+                timeText.style.textAlign = "center";
+                timeText.style.fontWeight = "normal";
+                timeText.style.marginTop = "-5px";
+                timeText.style.fontSize = "0.7rem";
+                if (station.timeStart && station.timeEnd) {
+                    timeText.textContent = station.timeStart + " - " + station.timeEnd;
+                } else {
+                    timeText.textContent = "";
+                }
+
+                stationCard.appendChild(statusText);
+                stationCard.appendChild(timeText);
+                wrapper.appendChild(label);
+                wrapper.appendChild(stationCard);
+                container.appendChild(wrapper);
+            });
+        }
+
+        // -------------------------------------------------------
+        // RENDER STATUS SUMMARY
+        // -------------------------------------------------------
+
+        function renderSummary() {
+            const counts = { vacant: 0, occupied: 0, reserved: 0 };
+
+            stationsData.forEach(function(station) {
+                if (counts[station.status] !== undefined) {
+                    counts[station.status]++;
+                }
+            });
+
+            const summary = document.getElementById("status-summary");
+            summary.innerHTML =
+                "<p>Vacant: "   + counts.vacant   + "</p>" +
+                "<p>Reserved: " + counts.reserved  + "</p>" +
+                "<p>Occupied: " + counts.occupied  + "</p>" +
+                "<p>Total: "    + stationsData.length + "</p>";
+        }
+
+        // -------------------------------------------------------
+        // RENDER DATE/TIME
+        // -------------------------------------------------------
+
+        function renderDateTime() {
+            const now = new Date();
+            const options = {
+                year:   "numeric",
+                month:  "long",
+                day:    "numeric",
+                hour:   "numeric",
+                minute: "2-digit",
+                hour12: true,
+            };
+            const formatted = now.toLocaleString("en-US", options).replace("at", "•");
+            document.getElementById("datetime-display").innerHTML = '<strong>' + formatted + '</strong>';
+        }
+
+        // -------------------------------------------------------
+        // QR CODE VERIFICATION + APPOINTMENT DETAILS
+        // A hardware QR scanner acts like a keyboard: it "types" the
+        // scanned QR payload (the JSON produced by generate_qr_code()
+        // in app.py) into #qr-scan-input and sends Enter. We parse
+        // that JSON, pull out id_number, and send it to /api/checkin,
+        // which verifies it against today's appointments and reports
+        // back whether it's verified, not verified, or expired.
+        // -------------------------------------------------------
+
+        const qrStatusEl = document.getElementById("qrstatus-text");
+        const qrScanInput = document.getElementById("qr-scan-input");
+
+        const appointmentFieldEls = {
+            name:     document.getElementById("appt-name"),
+            date:     document.getElementById("appt-date"),
+            timein:   document.getElementById("appt-timein"),
+            timeout:  document.getElementById("appt-timeout"),
+            location: document.getElementById("appt-location"),
+            station:  document.getElementById("appt-station"),
+        };
+
+        const qrStatusLabels = {
+            verified:   "Verified",
+            invalid:    "Invalid",
+            expired:    "Expired",
+            signed_out: "Signed Out",
+        };
+
+        // Sets the QR status display. Pass no argument (or an unknown
+        // value) to reset it back to the "---" placeholder.
+        function setQrStatus(kind) {
+            qrStatusEl.classList.remove("qrstatus-verified", "qrstatus-invalid", "qrstatus-expired", "qrstatus-signedout");
+
+            if (kind === "verified") {
+                qrStatusEl.textContent = qrStatusLabels.verified;
+                qrStatusEl.classList.add("qrstatus-verified");
+            } else if (kind === "invalid") {
+                qrStatusEl.textContent = qrStatusLabels.invalid;
+                qrStatusEl.classList.add("qrstatus-invalid");
+            } else if (kind === "expired") {
+                qrStatusEl.textContent = qrStatusLabels.expired;
+                qrStatusEl.classList.add("qrstatus-expired");
+            } else if (kind === "signed_out") {
+                qrStatusEl.textContent = qrStatusLabels.signed_out;
+                qrStatusEl.classList.add("qrstatus-signedout");
+            } else {
+                qrStatusEl.textContent = "---";
+            }
+        }
+
+        function clearAppointmentDetails() {
+            appointmentFieldEls.name.textContent     = "---";
+            appointmentFieldEls.date.textContent     = "---";
+            appointmentFieldEls.timein.textContent   = "---";
+            appointmentFieldEls.timeout.textContent  = "---";
+            appointmentFieldEls.location.textContent = "---";
+            appointmentFieldEls.station.textContent  = "---";
+        }
+
+        function displayAppointmentDetails(appt) {
+            if (!appt) {
+                clearAppointmentDetails();
+                return;
+            }
+            const middleInitial = appt.mi ? appt.mi + ". " : "";
+            appointmentFieldEls.name.textContent     = `${appt.first_name} ${middleInitial}${appt.last_name}`;
+            appointmentFieldEls.date.textContent     = appt.date;
+            appointmentFieldEls.timein.textContent   = appt.start_time;
+            appointmentFieldEls.timeout.textContent  = appt.end_time;
+            appointmentFieldEls.location.textContent = appt.location;
+            appointmentFieldEls.station.textContent  = appt.station_no;
+        }
+
+        async function handleQrScan(rawValue) {
+            const trimmed = (rawValue || "").trim();
+            if (!trimmed) {
+                return;
+            }
+
+            // The QR code encodes a JSON payload (see generate_qr_code()
+            // in app.py). Anything that isn't parseable JSON with an
+            // id_number is simply not a valid appointment QR code.
+            let payload;
+            try {
+                payload = JSON.parse(trimmed);
+            } catch (err) {
+                setQrStatus("invalid");
+                clearAppointmentDetails();
+                return;
+            }
+
+            const idNumber = payload && payload.id_number;
+            if (!idNumber) {
+                setQrStatus("invalid");
+                clearAppointmentDetails();
+                return;
+            }
+
+            try {
+                const response = await fetch("/api/checkin", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id_number: idNumber }),
+                });
+                const result = await response.json();
+
+                setQrStatus(result.verification);
+                displayAppointmentDetails(result.appointment);
+
+                fetchStationStatus();  // reflect the check-in on the left panel right away
+            } catch (err) {
+                console.error("Could not reach /api/checkin:", err);
+                setQrStatus("invalid");
+                clearAppointmentDetails();
+            }
+        }
+
+        // -------------------------------------------------------
+        // GLOBAL QR SCAN CAPTURE
+        // A hardware QR scanner behaves like a very fast keyboard: it
+        // "types" every character of the payload and then sends Enter,
+        // regardless of which element currently has focus. Listening
+        // only on #qr-scan-input meant a scan was silently dropped the
+        // moment the cashier/admin clicked anywhere else on the page
+        // (a button, the location dropdown, etc). Listening on the
+        // whole document instead means scans are captured no matter
+        // where focus happens to be - EXCEPT other genuine typing
+        // fields (the appointment form, dropdowns, etc.), which are
+        // left alone so normal typing/selecting still works.
+        // -------------------------------------------------------
+
+        let qrScanBuffer = "";
+        let lastQrScanKeyTime = 0;
+        const QR_SCAN_KEY_GAP_MS = 500; // scanner keystrokes arrive in a fast burst
+
+        function isOtherTypingField(target) {
+            if (!target || target === qrScanInput) {
+                return false;
+            }
+            const tag = target.tagName ? target.tagName.toLowerCase() : "";
+            return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+        }
+
+        document.addEventListener("keydown", function (e) {
+            // Don't hijack real typing happening in another field
+            // (e.g. the appointment scheduling form, location select).
+            if (isOtherTypingField(e.target)) {
+                return;
+            }
+
+            const now = Date.now();
+            if (now - lastQrScanKeyTime > QR_SCAN_KEY_GAP_MS) {
+                qrScanBuffer = ""; // gap too long - start a fresh scan
+            }
+            lastQrScanKeyTime = now;
+
+            if (e.key === "Enter") {
+                e.preventDefault();
+                const value = qrScanBuffer;
+                qrScanBuffer = "";
+                if (qrScanInput) {
+                    qrScanInput.value = "";
+                }
+                handleQrScan(value);
+                return;
+            }
+
+            if (e.key.length === 1) {
+                qrScanBuffer += e.key;
+            }
+        });
+
+        const btnAppointmentClose = document.getElementById("btn-appointment-close");
+        if (btnAppointmentClose) {
+            btnAppointmentClose.addEventListener("click", function () {
+                setQrStatus();
+                clearAppointmentDetails();
+                if (qrScanInput) {
+                    qrScanInput.focus();
+                }
+            });
+        }
+
+        // -------------------------------------------------------
+        // CONFIRMATION BANNER HELPERS
+        // status: true = success, false = error, null = pending/info
+        // -------------------------------------------------------
+
+        function showConfirmation(status, message) {
+            const banner = document.getElementById("confirmation-banner");
+            if (!banner) {
+                return;
+            }
+            banner.textContent = message;
+            banner.classList.remove("confirmation-success", "confirmation-error", "confirmation-pending");
+
+            if (status === true) {
+                banner.classList.add("confirmation-success");
+            } else if (status === false) {
+                banner.classList.add("confirmation-error");
+            } else {
+                banner.classList.add("confirmation-pending");
+            }
+            banner.style.display = "block";
+        }
+
+        function hideConfirmation() {
+            const banner = document.getElementById("confirmation-banner");
+            if (!banner) {
+                return;
+            }
+            banner.style.display = "none";
+        }
+
+        // -------------------------------------------------------
+        // APPOINTMENT FORM SUBMISSION
+        // Sends the form data to Flask (/submit-appointment) via
+        // fetch(). The backend stores it in MySQL, generates a
+        // unique ID number, and emails the confirmation.
+        // -------------------------------------------------------
+
+        const btnDone = document.getElementById("btn-done");
+        if (btnDone) {
+            btnDone.addEventListener("click", async function () {
+
+                const payload = {
+                    first_name:  document.getElementById("first_name").value.trim(),
+                    last_name:   document.getElementById("last_name").value.trim(),
+                    mi:          document.getElementById("mi").value.trim(),
+                    gsfe_email:  document.getElementById("gsfe_email").value.trim(),
+                    date:        document.getElementById("appt_date").value,
+                    station_no:  document.getElementById("station_no").value,
+                    location:    document.getElementById("appt_location").value,
+                    start_time:  document.getElementById("start_time").value,
+                    end_time:    document.getElementById("end_time").value,
+                };
+
+                // Basic client-side validation
+                for (const key in payload) {
+                    if (!payload[key]) {
+                        showConfirmation(false, "Please fill in all required fields before submitting.");
+                        return;
+                    }
+                }
+
+                showConfirmation(null, "Submitting your appointment, please wait...");
+
+                try {
+                    const response = await fetch("/submit-appointment", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok && result.success) {
+                        showConfirmation(
+                            true,
+                            `Appointment confirmed! Reference No: ${result.id_number}. ` +
+                            (result.email_sent
+                                ? "A confirmation email with your QR code has been sent to your GSFE email."
+                                : "However, the confirmation email could not be sent — please contact the system administrator.")
+                        );
+                        document.getElementById("appointment-form").reset();
+                        fetchStationStatus();  // reflect the new booking right away
+                    } else {
+                        showConfirmation(false, result.message || "Failed to schedule the appointment. Please try again.");
+                    }
+                } catch (err) {
+                    showConfirmation(false, "Could not connect to the server. Please check your connection and try again.");
+                }
+            });
+        }
+
+        const btnClear = document.getElementById("btn-clear");
+        if (btnClear) {
+            btnClear.addEventListener("click", function () {
+                document.getElementById("appointment-form").reset();
+                hideConfirmation();
+            });
+        }
+
+        // -------------------------------------------------------
+        // INIT
+        // -------------------------------------------------------
+        renderDateTime();
+        fetchStationStatus();               // initial load from the database
+        setInterval(renderDateTime, 1000);
+        setInterval(fetchStationStatus, 15000);  // refresh availability every 15 seconds
+
+        // Re-fetch immediately when the viewer switches location
+        const dashboardLocationSelect = document.getElementById("dashboard-location-select");
+        if (dashboardLocationSelect) {
+            dashboardLocationSelect.addEventListener("change", fetchStationStatus);
+        }
+    </script>
+</body>
+</html>

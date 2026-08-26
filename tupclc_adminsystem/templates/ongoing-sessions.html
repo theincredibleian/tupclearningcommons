@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Ongoing Sessions | TUPC Learning Commons Management</title>
+</head>
+
+<body>
+    <!-- NAVIGATION BAR -->
+    <div class="navbar">
+        <div class="navbar-content">
+            <div class="navbar-logo">
+                <img src="{{ url_for('static', filename='tuplogo.png') }}" alt="Logo">
+            </div>
+            <div>
+                <h4>Technological University of the Philippines - Cavite</h4>
+                <h2>Learning Commons Management</h2>
+            </div>
+        </div>
+        <nav class="menu">
+            <a href="/dashboard" class="navbar-menu-btn">Home</a>
+            <a href="/manage-stations" class="navbar-menu-btn">Learning Commons</a>
+            <a href="/scheduling" class="navbar-menu-btn">Scheduling</a>
+            <a href="/login-management" class="navbar-menu-btn active">Login Management</a>
+            <a href="#" class="navbar-menu-btn">Account</a>
+        </nav>
+    </div>
+
+<!-- ==================================================== -->
+
+<!-- HISTORY TABS -->
+<div class="history-tabs" style="display:flex; gap:0;">
+        <a href="/login-management" class="tab-link">
+            <button class="tab-btn-left">Appointment History</button>
+        </a>
+        <a href="/ongoing-sessions" class="tab-link">
+            <button class="tab-btn-right active-tab">Ongoing Sessions</button>
+        </a>
+    </div>
+
+<!-- ==================================================== -->
+
+<!-- MAIN CONTENT -->
+<div class="history-container">
+
+    <div class="history-top">
+        <h1>Ongoing Sessions</h1>
+    </div>
+
+    <!-- TABLE -->
+    <table class="history-table">
+
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Date</th>
+                <th>Start Time</th>
+                <th>Location</th>
+                <th>Station No.</th>
+                <th></th>
+            </tr>
+        </thead>
+
+        <tbody id="ongoing-sessions-body">
+            <!-- Populated live from /api/ongoing-sessions -->
+        </tbody>
+
+    </table>
+
+</div>
+
+<!-- ==================================================== -->
+
+<!-- APPOINTMENT DETAILS OVERLAY -->
+<div class="overlay-backdrop" id="details-overlay">
+    <div class="overlay-box">
+        <h3>Session Details</h3>
+
+        <p><strong>Name:</strong> <span id="detail-name"></span></p>
+        <p><strong>ID Number:</strong> <span id="detail-id"></span></p>
+        <p><strong>Email:</strong> <span id="detail-email"></span></p>
+        <p><strong>Date:</strong> <span id="detail-date"></span></p>
+        <p><strong>Start Time:</strong> <span id="detail-start"></span></p>
+        <p><strong>End Time:</strong> <span id="detail-end"></span></p>
+        <p><strong>Location:</strong> <span id="detail-location"></span></p>
+        <p><strong>Station No.:</strong> <span id="detail-station"></span></p>
+        <p><strong>Status:</strong> <span id="detail-status"></span></p>
+
+        <div class="overlay-buttons">
+            <button class="gray-btn" id="detail-close-btn">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================================================== -->
+
+    <script>
+
+        // =========================================================
+        // ONGOING SESSIONS PAGE
+        // Lists every appointment currently "occupied" (i.e. the
+        // student has checked in via QR scan and hasn't signed out
+        // yet), pulled from /api/ongoing-sessions. Always sorted by
+        // date by default (the endpoint returns it pre-sorted, oldest
+        // first). Each row has a "Details" button that opens an
+        // overlay with the full appointment info.
+        // =========================================================
+
+        const SESSIONS_POLL_MS = 15000; // refresh every 15s
+
+        const sessionsBody = document.getElementById("ongoing-sessions-body");
+        const detailsOverlay = document.getElementById("details-overlay");
+
+        const STATUS_LABELS = {
+            reserved: "Reserved",
+            occupied: "Occupied",
+            expired: "Expired",
+            completed: "Completed",
+        };
+
+        function statusClass(status) {
+            if (status === "occupied") return "occupied-text";
+            if (status === "reserved") return "reserved-text";
+            if (status === "completed") return "vacant-text";
+            return "closed-text";
+        }
+
+        // -------------------------------------------------------
+        // FETCH + RENDER
+        // -------------------------------------------------------
+
+        async function fetchOngoingSessions() {
+            try {
+                const response = await fetch("/api/ongoing-sessions");
+                const result = await response.json();
+
+                if (!result.success) {
+                    console.error("Failed to load ongoing sessions:", result.message);
+                    return;
+                }
+
+                renderSessions(result.sessions || []);
+            } catch (err) {
+                console.error("Could not reach /api/ongoing-sessions:", err);
+            }
+        }
+
+        function renderSessions(sessions) {
+            sessionsBody.innerHTML = "";
+
+            if (sessions.length === 0) {
+                const row = document.createElement("tr");
+                const cell = document.createElement("td");
+                cell.colSpan = 6;
+                cell.textContent = "No ongoing sessions right now.";
+                cell.style.textAlign = "center";
+                cell.style.color = "#888";
+                cell.style.fontWeight = "normal";
+                row.appendChild(cell);
+                sessionsBody.appendChild(row);
+                return;
+            }
+
+            // Sorted by date by default (already ordered by the server;
+            // re-sort here too in case the fetch order ever changes).
+            const sorted = sessions.slice().sort(function (a, b) {
+                if (a.date_sort !== b.date_sort) return a.date_sort < b.date_sort ? -1 : 1;
+                return a.start_time_sort < b.start_time_sort ? -1 : (a.start_time_sort > b.start_time_sort ? 1 : 0);
+            });
+
+            sorted.forEach(function (session) {
+                const row = document.createElement("tr");
+
+                const nameCell = document.createElement("td");
+                nameCell.textContent = session.full_name;
+
+                const dateCell = document.createElement("td");
+                dateCell.textContent = session.date;
+
+                const startCell = document.createElement("td");
+                startCell.textContent = session.start_time;
+
+                const locationCell = document.createElement("td");
+                locationCell.textContent = session.location;
+
+                const stationCell = document.createElement("td");
+                stationCell.textContent = session.station_no;
+
+                const actionCell = document.createElement("td");
+                actionCell.className = "table-buttons";
+                const btn = document.createElement("button");
+                btn.className = "table-btn gray-btn";
+                btn.textContent = "Details";
+                btn.addEventListener("click", function () {
+                    showDetails(session);
+                });
+                actionCell.appendChild(btn);
+
+                row.appendChild(nameCell);
+                row.appendChild(dateCell);
+                row.appendChild(startCell);
+                row.appendChild(locationCell);
+                row.appendChild(stationCell);
+                row.appendChild(actionCell);
+                sessionsBody.appendChild(row);
+            });
+        }
+
+        // -------------------------------------------------------
+        // DETAILS OVERLAY
+        // -------------------------------------------------------
+
+        function showDetails(session) {
+            document.getElementById("detail-name").textContent = session.full_name;
+            document.getElementById("detail-id").textContent = session.id_number;
+            document.getElementById("detail-email").textContent = session.gsfe_email;
+            document.getElementById("detail-date").textContent = session.date;
+            document.getElementById("detail-start").textContent = session.start_time;
+            document.getElementById("detail-end").textContent = session.end_time;
+            document.getElementById("detail-location").textContent = session.location;
+            document.getElementById("detail-station").textContent = session.station_no;
+
+            const statusEl = document.getElementById("detail-status");
+            statusEl.textContent = STATUS_LABELS[session.status] || session.status;
+            statusEl.className = statusClass(session.status);
+
+            detailsOverlay.classList.add("show");
+        }
+
+        function hideDetails() {
+            detailsOverlay.classList.remove("show");
+        }
+
+        document.getElementById("detail-close-btn").addEventListener("click", hideDetails);
+        detailsOverlay.addEventListener("click", function (e) {
+            if (e.target === detailsOverlay) hideDetails();
+        });
+
+        // -------------------------------------------------------
+        // INIT
+        // -------------------------------------------------------
+
+        fetchOngoingSessions();
+        setInterval(fetchOngoingSessions, SESSIONS_POLL_MS);
+    </script>
+</body>
+</html>

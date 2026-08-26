@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Availability Status | TUPC Learning Commons</title>
+</head>
+
+<body>
+    <!-- NAVIGATION BAR -->
+    <div class="navbar">
+        <div class="navbar-content">
+            <div class="navbar-logo">
+                <img src="{{ url_for('static', filename='tuplogo.png') }}" alt="Logo">
+            </div>
+            <div>
+                <h4>Technological University of the Philippines - Cavite</h4>
+                <h2>Learning Commons</h2>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content" style="gap: 1rem;">
+
+        <!-- LEFT PANEL -->
+        <div class="left-panel">
+            <div class="status-card">
+                <h1>&lsaquo; Learning Stations Availability Status</h1>
+
+                <!-- TOP STATUS -->
+                <div class="top-status">
+
+                    <!-- LEFT -->
+                    <div class="status-left">
+                        <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                            <div style="display:flex;flex-direction:column;">
+                                <input type="date" id="appt_date" class="date-pill" required>
+                            </div>
+
+                            <div style="display:flex;flex-direction:column;">
+                                <select id="dashboard-location-select" class="location-pill">
+                                    <option value="Main Learning Commons">Main Learning Commons</option>
+                                    <option value="Learning Commons 2">Learning Commons 2</option>
+                                </select>
+                            </div>
+
+                            <div style="display:flex;align-items:center;">
+                                <button id="schedule-btn" class="pill-btn" type="button" onclick="window.location.href='/dashboard'">Schedule an Appointment</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STATUS SUMMARY (optional quick counts) -->
+                <div id="status-summary" class="status-summary"></div>
+
+                <!-- CLOSED NOTICE -->
+                <div id="closed-notice" class="closed-notice" style="display:none;">
+                    The Learning Commons is closed for the selected date.
+                </div>
+
+                <!-- TIMELINE -->
+                <div class="timeline-outer">
+                    <button type="button" class="scroll-btn scroll-left" id="scrollLeftBtn" aria-label="Scroll left">&lsaquo;</button>
+
+                    <div class="timeline-scroll" id="timelineScroll">
+                        <div class="timeline-grid" id="timelineGrid"></div>
+                    </div>
+
+                    <button type="button" class="scroll-btn scroll-right" id="scrollRightBtn" aria-label="Scroll right">&rsaquo;</button>
+                </div>
+
+                <!-- BUTTONS -->
+                <div class="buttons">
+                    <button class="gray-btn" type="button" onclick="window.location.href='detailed-status.html'">More Information</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+        // -------------------------------------------------------
+        // CONFIGURATION
+        // -------------------------------------------------------
+
+        const DAY_START_HOUR = 8;   // 8:00 AM
+        const DAY_END_HOUR   = 17;  // 5:00 PM
+        const SLOT_MINUTES   = 30;  // half-hour resolution for block placement
+        const SLOTS_PER_DAY  = ((DAY_END_HOUR - DAY_START_HOUR) * 60) / SLOT_MINUTES; // 18
+        const STATION_COL_WIDTH = 130; // px, must match style.css
+        const HOUR_LABELS = [];
+        for (let h = DAY_START_HOUR; h <= DAY_END_HOUR; h++) {
+            HOUR_LABELS.push(h);
+        }
+
+        const statusLabels = {
+            vacant:   "Vacant",
+            occupied: "Occupied",
+            reserved: "Reserved",
+            closed:   "Closed",
+        };
+
+        function normalizeStatus(status) {
+            if (!status) return "reserved";
+            const normalized = String(status).trim().toLowerCase();
+            if (normalized === "occupied" || normalized === "reserved" || normalized === "vacant" || normalized === "closed") {
+                return normalized;
+            }
+            if (normalized === "available" || normalized === "free") return "vacant";
+            return "reserved";
+        }
+
+        let stationsData = []; // [{ name, appointments: [{status,start,end}, ...] }]
+
+        // -------------------------------------------------------
+        // CLOSED-DAY HELPERS (weekends / outside dept. hours)
+        // -------------------------------------------------------
+
+        function formatHour12(h) {
+            const period = h >= 12 ? "PM" : "AM";
+            let hour12 = h % 12;
+            if (hour12 === 0) hour12 = 12;
+            return hour12 + ":00 " + period;
+        }
+
+        function isSelectedDateWeekend() {
+            const dateInput = document.getElementById("appt_date");
+            if (!dateInput.value) return false;
+            // Parse as local date to avoid timezone off-by-one
+            const [y, m, d] = dateInput.value.split("-").map(Number);
+            const day = new Date(y, m - 1, d).getDay(); // 0 = Sunday, 6 = Saturday
+            return day === 0 || day === 6;
+        }
+
+        // -------------------------------------------------------
+        // TIME PARSING
+        // Accepts "HH:MM", "HH:MM:SS" (24hr) or "h:MM AM/PM" strings
+        // and returns minutes elapsed since DAY_START_HOUR:00.
+        // -------------------------------------------------------
+
+        function minutesSinceDayStart(timeStr) {
+            if (!timeStr) return null;
+
+            let hours, minutes;
+            const ampmMatch = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+
+            if (ampmMatch) {
+                hours = parseInt(ampmMatch[1], 10);
+                minutes = parseInt(ampmMatch[2], 10);
+                const period = ampmMatch[3].toUpperCase();
+                if (period === "PM" && hours !== 12) hours += 12;
+                if (period === "AM" && hours === 12) hours = 0;
+            } else {
+                const parts = timeStr.trim().split(":");
+                hours = parseInt(parts[0], 10);
+                minutes = parseInt(parts[1], 10);
+            }
+
+            const totalMinutes = (hours - DAY_START_HOUR) * 60 + minutes;
+            // Clamp inside the visible day window
+            return Math.max(0, Math.min(totalMinutes, SLOTS_PER_DAY * SLOT_MINUTES));
+        }
+
+        // Converts a time string into a 1-based grid row (row 1 is the header row)
+        function timeToGridRow(timeStr) {
+            const mins = minutesSinceDayStart(timeStr);
+            if (mins === null) return 2;
+            const slot = Math.round(mins / SLOT_MINUTES);
+            return 2 + slot; // rows 2..(2+SLOTS_PER_DAY) are the body rows
+        }
+
+        function formatTimeLabel(timeStr) {
+            if (!timeStr) return "";
+            const ampmMatch = timeStr.trim().match(/^\d{1,2}:\d{2}\s*(AM|PM)$/i);
+            if (ampmMatch) return timeStr.trim();
+
+            const parts = timeStr.trim().split(":");
+            let hours = parseInt(parts[0], 10);
+            const minutes = parts[1];
+            const period = hours >= 12 ? "PM" : "AM";
+            let hour12 = hours % 12;
+            if (hour12 === 0) hour12 = 12;
+            return hour12 + ":" + minutes + " " + period;
+        }
+
+        // -------------------------------------------------------
+        // FETCH STATION SCHEDULE FROM THE SERVER
+        //
+        // Reads from the same database as dashboard.html via:
+        // GET /api/station-schedule?date=YYYY-MM-DD&location=...
+        //
+        // Expected response shape:
+        // {
+        //   "success": true,
+        //   "stations": {
+        //     "Station 1": [
+        //       { "status": "occupied", "start_time": "09:00", "end_time": "11:00" },
+        //       { "status": "reserved", "start_time": "13:00", "end_time": "14:00" }
+        //     ],
+        //     "Station 2": [ ... ],
+        //     ...
+        //   }
+        // }
+        //
+        // Returns the FULL list of appointments for the chosen day
+        // to display the entire timeline at once.
+        // -------------------------------------------------------
+
+        async function fetchStationSchedule() {
+            const locationSelect = document.getElementById("dashboard-location-select");
+            const dateInput = document.getElementById("appt_date");
+
+            const location = locationSelect ? locationSelect.value : "Main Learning Commons";
+            const date = dateInput && dateInput.value ? dateInput.value : todayISO();
+
+            const closedNotice = document.getElementById("closed-notice");
+            const timelineScroll = document.getElementById("timelineScroll");
+
+            if (isSelectedDateWeekend()) {
+                stationsData = [];
+                renderTimeline();
+                renderSummary();
+                closedNotice.style.display = "block";
+                timelineScroll.style.display = "none";
+                return;
+            }
+
+            closedNotice.style.display = "none";
+            timelineScroll.style.display = "block";
+
+            try {
+                const response = await fetch(`/api/station-schedule?date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    console.error("Failed to load station schedule:", result.message || "Unknown error");
+                    return;
+                }
+
+                // Transform database records into timeline display format
+                stationsData = Object.entries(result.stations).map(([name, appointments]) => ({
+                    name: name,
+                    appointments: (appointments || []).map(function (a) {
+                        return {
+                            status: a.status || "reserved",
+                            start: a.start_time,
+                            end: a.end_time,
+                        };
+                    }),
+                }));
+
+                // Order stations numerically: Station 1..N
+                stationsData.sort(function (a, b) {
+                    function stationNum(s) {
+                        const m = s.name.match(/(\d+)$/);
+                        return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+                    }
+                    return stationNum(a) - stationNum(b);
+                });
+
+                renderTimeline();
+                renderSummary();
+            } catch (err) {
+                console.error("Could not reach /api/station-schedule:", err);
+            }
+        }
+
+        function todayISO() {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, "0");
+            const d = String(now.getDate()).padStart(2, "0");
+            return `${y}-${m}-${d}`;
+        }
+
+        // -------------------------------------------------------
+        // RENDER TIMELINE (time on the Y axis, stations on the X axis)
+        // -------------------------------------------------------
+
+        function renderTimeline() {
+            const grid = document.getElementById("timelineGrid");
+            grid.innerHTML = "";
+
+            const stationCount = stationsData.length;
+            const totalBodyRows = SLOTS_PER_DAY; // 18 half-hour rows
+            const totalRows = 1 + totalBodyRows + 1; // header + body + zero-height closing row
+
+            grid.style.gridTemplateColumns = `90px repeat(${stationCount}, ${STATION_COL_WIDTH}px)`;
+            grid.style.gridTemplateRows = `45px repeat(${totalBodyRows}, 35px) 20px`;
+
+            // Corner cell
+            const corner = document.createElement("div");
+            corner.className = "tl-corner";
+            corner.style.gridColumn = "1";
+            corner.style.gridRow = "1";
+            grid.appendChild(corner);
+
+            // Station headers
+            stationsData.forEach(function (station, index) {
+                const header = document.createElement("div");
+                header.className = "tl-station-header";
+                header.style.gridColumn = String(index + 2);
+                header.style.gridRow = "1";
+                header.textContent = station.name;
+                grid.appendChild(header);
+            });
+
+            // A thin line between every row (every half hour) ...
+            for (let slot = 0; slot <= totalBodyRows; slot++) {
+                const rowIndex = 2 + slot;
+                const line = document.createElement("div");
+                line.className = "tl-gridline";
+                line.style.gridColumn = `1 / span ${stationCount + 1}`;
+                line.style.gridRow = String(rowIndex);
+                grid.appendChild(line);
+            }
+
+            // ... and an hour label (8:00 AM ... 5:00 PM) on every other line
+            HOUR_LABELS.forEach(function (h) {
+                const rowIndex = timeToGridRow(String(h).padStart(2, "0") + ":00");
+
+                const label = document.createElement("div");
+                label.className = "tl-time-label";
+                label.style.gridColumn = "1";
+                label.style.gridRow = String(rowIndex);
+                label.textContent = formatHour12(h);
+                grid.appendChild(label);
+            });
+
+            // Appointment blocks
+            stationsData.forEach(function (station, index) {
+                station.appointments.forEach(function (appt) {
+                    if (!appt.start || !appt.end) {
+                        console.warn("Skipping appointment missing start/end", appt);
+                        return;
+                    }
+
+                    const rowStart = timeToGridRow(appt.start);
+                    const rowEnd = timeToGridRow(appt.end);
+                    if (rowEnd <= rowStart) {
+                        console.warn("Skipping appointment with invalid row range", appt, rowStart, rowEnd);
+                        return;
+                    }
+
+                    const block = document.createElement("div");
+                    const statusClass = normalizeStatus(appt.status);
+                    block.className = "tl-block " + statusClass;
+                    block.style.gridColumn = String(index + 2);
+                    block.style.gridRow = `${rowStart} / ${rowEnd}`;
+
+                    const statusEl = document.createElement("div");
+                    statusEl.className = "tl-block-status";
+                    statusEl.textContent = statusLabels[statusClass] || statusClass;
+
+                    const timeEl = document.createElement("div");
+                    timeEl.className = "tl-block-time";
+                    timeEl.textContent = formatTimeLabel(appt.start) + " to " + formatTimeLabel(appt.end);
+
+                    block.appendChild(statusEl);
+                    block.appendChild(timeEl);
+                    grid.appendChild(block);
+                });
+            });
+
+            updatePaginationButtons();
+        }
+
+        // -------------------------------------------------------
+        // RENDER STATUS SUMMARY (counts appointments across the day)
+        // -------------------------------------------------------
+
+        function renderSummary() {
+            const counts = { vacant: 0, occupied: 0, reserved: 0 };
+
+            stationsData.forEach(function (station) {
+                station.appointments.forEach(function (appt) {
+                    const normalizedStatus = normalizeStatus(appt.status);
+                    if (counts[normalizedStatus] !== undefined) {
+                        counts[normalizedStatus]++;
+                    }
+                });
+            });
+
+            const summary = document.getElementById("status-summary");
+            summary.innerHTML =
+                "<span>Reserved: " + counts.reserved + "</span>" +
+                "<span>Occupied: " + counts.occupied + "</span>" +
+                "<span>Vacant: " + counts.vacant + "</span>" +
+                "<span>Stations: " + stationsData.length + "</span>";
+        }
+
+        // -------------------------------------------------------
+        // PAGINATION CONTROLS
+        // Each arrow click advances/retreats by exactly one "page"
+        // worth of stations, sized to however many columns actually
+        // fit in the visible timeline area right now.
+        // -------------------------------------------------------
+
+        let currentPage = 0;
+
+        function getVisibleStationCount() {
+            const scroller = document.getElementById("timelineScroll");
+            const availableWidth = scroller.clientWidth - 90; // minus the sticky time column
+            return Math.max(1, Math.floor(availableWidth / STATION_COL_WIDTH));
+        }
+
+        function getTotalPages() {
+            const visible = getVisibleStationCount();
+            return Math.max(1, Math.ceil(stationsData.length / visible));
+        }
+
+        function goToPage(page) {
+            const visible = getVisibleStationCount();
+            const maxPage = getTotalPages() - 1;
+            currentPage = Math.min(Math.max(page, 0), maxPage);
+
+            document.getElementById("timelineScroll").scrollTo({
+                left: currentPage * visible * STATION_COL_WIDTH,
+                behavior: "smooth",
+            });
+
+            updatePaginationButtons();
+        }
+
+        function updatePaginationButtons() {
+            const maxPage = getTotalPages() - 1;
+            if (currentPage > maxPage) currentPage = maxPage;
+            if (currentPage < 0) currentPage = 0;
+
+            const leftBtn = document.getElementById("scrollLeftBtn");
+            const rightBtn = document.getElementById("scrollRightBtn");
+            leftBtn.disabled = currentPage <= 0;
+            rightBtn.disabled = currentPage >= maxPage;
+        }
+
+        document.getElementById("scrollLeftBtn").addEventListener("click", function () {
+            goToPage(currentPage - 1);
+        });
+
+        document.getElementById("scrollRightBtn").addEventListener("click", function () {
+            goToPage(currentPage + 1);
+        });
+
+        window.addEventListener("resize", updatePaginationButtons);
+
+        // -------------------------------------------------------
+        // INIT
+        // -------------------------------------------------------
+
+        document.getElementById("appt_date").value = todayISO();
+
+        fetchStationSchedule();                         // initial load from the database
+        setInterval(fetchStationSchedule, 15000);        // refresh every 15 seconds
+
+        document.getElementById("dashboard-location-select").addEventListener("change", function () {
+            currentPage = 0;
+            fetchStationSchedule();
+        });
+        document.getElementById("appt_date").addEventListener("change", function () {
+            currentPage = 0;
+            fetchStationSchedule();
+        });
+    </script>
+</body>
+</html>

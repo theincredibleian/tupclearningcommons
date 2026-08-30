@@ -46,6 +46,41 @@ ALTER TABLE appointments
 ALTER TABLE appointments ADD INDEX IF NOT EXISTS idx_group_id (group_id);
 
 -- ==========================================================
+-- STATIONS
+-- ==========================================================
+-- One row per (location, station_no) pair. This table is now the
+-- single source of truth for:
+--   - the "Location" dropdowns (DISTINCT location, filtered to
+--     is_closed = 0 - see get_active_locations() in app.py)
+--   - the station list shown/selectable for a given location (every
+--     row for that location - see get_stations_for_location())
+--   - each station's "closed" status, independent of whether it has
+--     a booking (is_closed = 1 always shows as "closed")
+CREATE TABLE IF NOT EXISTS stations (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    location    VARCHAR(100) NOT NULL,
+    station_no  VARCHAR(50)  NOT NULL,
+    is_closed   TINYINT(1)   NOT NULL DEFAULT 0,
+    UNIQUE KEY uq_location_station (location, station_no)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stations_location ON stations (location);
+
+-- Seed the original 2 locations x 10 stations so a fresh install
+-- matches the app's previous hardcoded LOCATION_LIST/STATION_LIST.
+-- INSERT IGNORE means this is safe to re-run without duplicating rows.
+INSERT IGNORE INTO stations (location, station_no, is_closed)
+SELECT loc.location, CONCAT('Station ', num.n), 0
+FROM (
+    SELECT 'Main Learning Commons' AS location
+    UNION ALL SELECT 'Learning Commons 2'
+) AS loc
+CROSS JOIN (
+    SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
+    UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10
+) AS num;
+
+-- ==========================================================
 -- EMAIL RESTRICTIONS
 -- ==========================================================
 -- Any email listed here is blocked from creating a new

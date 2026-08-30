@@ -1,0 +1,52 @@
+TUPC Learning Commons
+August 30 Update
+
+[Changelogs:] 📜
+a. Kiosk System
+
+➕ Added the ability of the availability status panel (stations grid) to be resized based on the current window size and zoom levels).
+➕ Added a scrollbar inside the availability status panel to avoid scrolling the main page when zoomed in or when multiple stations are added.
+➕ Added the ability to automatically block restricted users from creating an appointment.
+➕ Implemented the "GSFE email only" protocol for appointments.  
+🛠️ Fixed the UI of the Dashboard and Reservations Modal.
+🛠️ Fixed the functionality of the Detailed Availability Status page to display the up-to-date status and appointments from the database. 
+🛠️ Fixed the hardcoded location options (it now adapts to the current status on the database).
+🛠️ The reservations modal now automatically appears upon loading the kiosk page. It will also reappear 10 seconds after scanning the QR code. 
+🛠️ Changed the ID number generation logic to be based on the actual appointment/reservation date rather than the ID generation date.
+🛠️ Shortened the QR code to just the reservation ID number.
+
+b. Admin System
+➕ Added the ability to open and close all learning stations. 
+➕ Added the ability to rename existing learning commons locations.
+➕ Added an "Upcoming Appointments" tab inside the Login Management page to segregate all upcoming appointments from Appointment History,
+🛠️ Fixed the status display issue on the Manage Stations Tab, wherein the station status will be properly displayed as closed when the station is closed during inactive hours. 
+🛠️ Fixed the UI of the Login Management page.
+🗑️ Removed the hardcoded opening and closing hours of the learning commons. All learning stations will be opened and closed manually inside the Manage Stations page (take note that the reservations will still be restricted to 8am to 5pm only during weekdays).
+
+------------------------------------------------------
+
+[Bugs and Issues:] 🪲
+a. Kiosk System
+➡️ A visual glitch in the number of columns and the margin between the stations grid and the "More Information" button inside the availability status panel when zooming in or out.
+➡️ Group reservations generates one QR code for each station. It also only reserves a single station when reserving multiple stations for the group.
+
+b. Admin System
+➡️ Log Report (Excel file) generation is not yet implemented.
+➡️ Scheduling Page is subject to feature/UI improvements.
+➡️ Login page is subject to visual changes to match the rest of the system. 
+ 
+c. For BOTH Systems
+➡️ The dashboard and detailed_status UI and logic for both admin and kiosk systems are not yet the same to each other due to separate changes between the dashboards.
+➡️ The Detailed Availability Status page is subject to visual fixes.
+
+------------------------------------------------------ 
+
+[Feature Suggestions:]  ✏️
+➡️ Allow the admin system to select opening days for reservation (since the campus is currently closed every Friday, but this option allows admins to re- 
+➡️ Integrate Philippine holidays in the calendar view and during reservation (so that students will not be able to book an appointment during holidays).
+➡️ Clicking a date on the Calendar View to see all reservations during that day.
+
+------------------------------------------------------ 
+
+[Important Note:] 🔖
+Make sure to update the MySQL database using the schema.sql file inside the kiosk system folder.

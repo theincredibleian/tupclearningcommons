@@ -25,7 +25,7 @@
             <a href="/manage-stations" class="navbar-menu-btn active">Learning Commons</a>
             <a href="/scheduling" class="navbar-menu-btn">Scheduling</a>
             <a href="/login-management" class="navbar-menu-btn">Login Management</a>
-            <a href="#" class="navbar-menu-btn">Account</a>
+            <a href="/logout" class="navbar-menu-btn">Log Out</a>
         </nav>
     </div>
 
@@ -67,6 +67,12 @@
             <button class="gray-btn add-btn" id="btn-add-station" type="button">
                 Add Learning Station
             </button>
+            <button class="gray-btn add-btn" id="btn-close-all-stations" type="button">
+                Close All
+            </button>
+            <button class="gray-btn add-btn" id="btn-open-all-stations" type="button">
+                Open All
+            </button>
             <button class="gray-btn add-btn" id="btn-manage-locations" type="button">
                 Manage Locations
             </button>
@@ -84,6 +90,18 @@
             <div class="overlay-buttons">
                 <button class="gray-btn" id="btn-cancel-remove-station" type="button">Cancel</button>
                 <button class="red-btn" id="btn-confirm-remove-station" type="button">Remove</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CLOSE ALL / OPEN ALL CONFIRMATION OVERLAY -->
+    <div class="overlay-backdrop" id="close-all-overlay">
+        <div class="overlay-box">
+            <h3 id="close-all-title">Close All Stations</h3>
+            <p id="close-all-message">Are you sure you want to close all learning stations at this location? Students won't be able to book any of them until they're reopened.</p>
+            <div class="overlay-buttons">
+                <button class="gray-btn" id="btn-cancel-close-all" type="button">Cancel</button>
+                <button class="red-btn" id="btn-confirm-close-all" type="button">Close All</button>
             </div>
         </div>
     </div>
@@ -128,6 +146,21 @@
         </div>
     </div>
 
+    <!-- RENAME LOCATION OVERLAY (nested inside Manage Locations) -->
+    <div class="overlay-backdrop" id="rename-location-overlay">
+        <div class="overlay-box">
+            <h3>Rename Location</h3>
+            <p id="rename-location-message">Enter a new name for this location.</p>
+            <div class="add-location-row">
+                <input type="text" id="rename-location-input" placeholder="New location name..." autocomplete="off">
+            </div>
+            <div class="overlay-buttons">
+                <button class="gray-btn" id="btn-cancel-rename-location" type="button">Cancel</button>
+                <button class="gray-btn" id="btn-confirm-rename-location" type="button">Rename</button>
+            </div>
+        </div>
+    </div>
+
 <!-- ==================================================== -->
 
     <script>
@@ -140,6 +173,7 @@
         let currentLocation = "";
         let pendingRemoveStation = null;
         let pendingRemoveLocation = null;
+        let pendingRenameLocation = null;
 
         const locationSelect = document.getElementById("manage-location-select");
         const tableBody = document.getElementById("station-table-body");
@@ -214,6 +248,11 @@
                 statusCell.className = statusTextClass[station.status] || "vacant-text";
                 statusCell.textContent = statusLabel[station.status] || station.status;
 
+                // "Open/Closed" reflects the station's manual is_closed
+                // flag - stations are only ever opened/closed manually
+                // now (individually via Close/Reopen, or in bulk via
+                // Close All / Open All below); there's no automatic
+                // hour-based closing anymore.
                 const openCell = document.createElement("td");
                 openCell.className = station.is_closed ? "closed-text" : "open-text";
                 openCell.textContent = station.is_closed ? "Closed" : "Open";
@@ -279,6 +318,106 @@
                 console.error("Could not reach /api/stations/close:", err);
                 alert("Could not connect to the server. Please try again.");
             }
+        }
+
+        // -------------------------------------------------------
+        // CLOSE ALL / OPEN ALL STATIONS (bulk, current location)
+        // Stations are only ever opened/closed manually now - there's
+        // no automatic hour-based closing anymore - so this is the
+        // fast way to shut everything down (e.g. for a holiday or
+        // maintenance) or bring it all back at once, instead of
+        // clicking Close/Reopen on every station one at a time.
+        // -------------------------------------------------------
+
+        let pendingCloseAllAction = null; // true = closing all, false = opening all
+
+        const closeAllOverlay = document.getElementById("close-all-overlay");
+        const closeAllTitle = document.getElementById("close-all-title");
+        const closeAllMessage = document.getElementById("close-all-message");
+        const btnConfirmCloseAll = document.getElementById("btn-confirm-close-all");
+
+        function openCloseAllConfirm(closed) {
+            pendingCloseAllAction = closed;
+
+            if (closeAllTitle) {
+                closeAllTitle.textContent = closed ? "Close All Stations" : "Open All Stations";
+            }
+            if (closeAllMessage) {
+                closeAllMessage.textContent = closed
+                    ? `Are you sure you want to close all learning stations at "${currentLocation}"? Students won't be able to book any of them until they're reopened.`
+                    : `Are you sure you want to reopen all learning stations at "${currentLocation}"?`;
+            }
+            if (btnConfirmCloseAll) {
+                btnConfirmCloseAll.textContent = closed ? "Close All" : "Open All";
+                btnConfirmCloseAll.className = closed ? "red-btn" : "gray-btn";
+            }
+            if (closeAllOverlay) {
+                closeAllOverlay.classList.add("show");
+            }
+        }
+
+        function closeCloseAllConfirm() {
+            pendingCloseAllAction = null;
+            if (closeAllOverlay) {
+                closeAllOverlay.classList.remove("show");
+            }
+        }
+
+        const btnCloseAllStations = document.getElementById("btn-close-all-stations");
+        if (btnCloseAllStations) {
+            btnCloseAllStations.addEventListener("click", function () {
+                if (!currentLocation) {
+                    return;
+                }
+                openCloseAllConfirm(true);
+            });
+        }
+
+        const btnOpenAllStations = document.getElementById("btn-open-all-stations");
+        if (btnOpenAllStations) {
+            btnOpenAllStations.addEventListener("click", function () {
+                if (!currentLocation) {
+                    return;
+                }
+                openCloseAllConfirm(false);
+            });
+        }
+
+        const btnCancelCloseAll = document.getElementById("btn-cancel-close-all");
+        if (btnCancelCloseAll) {
+            btnCancelCloseAll.addEventListener("click", closeCloseAllConfirm);
+        }
+
+        if (btnConfirmCloseAll) {
+            btnConfirmCloseAll.addEventListener("click", async function () {
+                if (pendingCloseAllAction === null || !currentLocation) {
+                    closeCloseAllConfirm();
+                    return;
+                }
+                const closed = pendingCloseAllAction;
+
+                try {
+                    const response = await fetch("/api/stations/close-all", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            location: currentLocation,
+                            closed: closed,
+                        }),
+                    });
+                    const result = await response.json();
+
+                    if (!result.success) {
+                        alert(result.message || "Could not update the stations at this location.");
+                    }
+                } catch (err) {
+                    console.error("Could not reach /api/stations/close-all:", err);
+                    alert("Could not connect to the server. Please try again.");
+                } finally {
+                    closeCloseAllConfirm();
+                    fetchStations();
+                }
+            });
         }
 
         // -------------------------------------------------------
@@ -429,6 +568,14 @@
                 const buttonsCell = document.createElement("td");
                 buttonsCell.className = "table-buttons";
 
+                const renameBtn = document.createElement("button");
+                renameBtn.className = "gray-btn table-btn";
+                renameBtn.type = "button";
+                renameBtn.textContent = "Rename";
+                renameBtn.addEventListener("click", function () {
+                    openRenameLocationConfirm(name);
+                });
+
                 const removeBtn = document.createElement("button");
                 removeBtn.className = "red-btn table-btn";
                 removeBtn.type = "button";
@@ -437,6 +584,7 @@
                     openRemoveLocationConfirm(name);
                 });
 
+                buttonsCell.appendChild(renameBtn);
                 buttonsCell.appendChild(removeBtn);
                 row.appendChild(nameCell);
                 row.appendChild(buttonsCell);
@@ -566,6 +714,99 @@
                     closeRemoveLocationConfirm();
                     fetchLocations();
                     fetchStations();
+                }
+            });
+        }
+
+        // -------------------------------------------------------
+        // RENAME LOCATION - confirmation overlay (nested)
+        // -------------------------------------------------------
+
+        const renameLocationOverlay = document.getElementById("rename-location-overlay");
+        const renameLocationMessage = document.getElementById("rename-location-message");
+        const renameLocationInput = document.getElementById("rename-location-input");
+
+        function openRenameLocationConfirm(name) {
+            pendingRenameLocation = name;
+            if (renameLocationMessage) {
+                renameLocationMessage.textContent = `Enter a new name for "${name}".`;
+            }
+            if (renameLocationInput) {
+                renameLocationInput.value = name;
+            }
+            if (renameLocationOverlay) {
+                renameLocationOverlay.classList.add("show");
+            }
+            if (renameLocationInput) {
+                renameLocationInput.focus();
+                renameLocationInput.select();
+            }
+        }
+
+        function closeRenameLocationConfirm() {
+            pendingRenameLocation = null;
+            if (renameLocationInput) {
+                renameLocationInput.value = "";
+            }
+            if (renameLocationOverlay) {
+                renameLocationOverlay.classList.remove("show");
+            }
+        }
+
+        const btnCancelRenameLocation = document.getElementById("btn-cancel-rename-location");
+        if (btnCancelRenameLocation) {
+            btnCancelRenameLocation.addEventListener("click", closeRenameLocationConfirm);
+        }
+
+        const btnConfirmRenameLocation = document.getElementById("btn-confirm-rename-location");
+        if (btnConfirmRenameLocation) {
+            btnConfirmRenameLocation.addEventListener("click", async function () {
+                if (!pendingRenameLocation) {
+                    return;
+                }
+                const oldName = pendingRenameLocation;
+                const newName = renameLocationInput ? renameLocationInput.value.trim() : "";
+
+                if (!newName) {
+                    alert("Please enter a location name.");
+                    return;
+                }
+                if (newName === oldName) {
+                    closeRenameLocationConfirm();
+                    return;
+                }
+
+                try {
+                    const response = await fetch("/api/locations/rename", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ old_name: oldName, new_name: newName }),
+                    });
+                    const result = await response.json();
+
+                    if (!result.success) {
+                        alert(result.message || "Could not rename that location.");
+                        return;
+                    }
+                } catch (err) {
+                    console.error("Could not reach /api/locations/rename:", err);
+                    alert("Could not connect to the server. Please try again.");
+                    return;
+                } finally {
+                    closeRenameLocationConfirm();
+                    fetchLocations();
+                    fetchStations();
+                }
+            });
+        }
+
+        if (renameLocationInput) {
+            renameLocationInput.addEventListener("keydown", function (e) {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (btnConfirmRenameLocation) {
+                        btnConfirmRenameLocation.click();
+                    }
                 }
             });
         }

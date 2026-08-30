@@ -50,14 +50,14 @@ CREATE TABLE `appointments` (
 --
 
 INSERT INTO `appointments` (`id`, `id_number`, `first_name`, `last_name`, `mi`, `gsfe_email`, `date`, `station_no`, `location`, `start_time`, `end_time`, `created_at`, `status`) VALUES
-(3, 'LC-07-12-2026-0001', 'Jian Ray', 'Lomibao', 'I.', 'jiansmediaverse@gmail.com', '2026-07-13', 'Station 2', 'Main Learning Commons', '08:00:00', '10:00:00', '2026-07-12 00:34:38', 'expired'),
-(4, 'LC-07-12-2026-0002', 'Jian Ray', 'Lomibao', 'I.', 'jiansmediaverse@gmail.com', '2026-07-13', 'Station 6', 'Main Learning Commons', '12:00:00', '13:00:00', '2026-07-12 01:06:20', 'expired'),
-(5, 'LC-07-13-2026-0001', 'Jian Ray', 'Lomibao', 'I.', 'jiansmediaverse@gmail.com', '2026-07-13', 'Station 3', 'Main Learning Commons', '12:00:00', '14:00:00', '2026-07-13 04:15:56', 'expired'),
-(6, 'LC-07-13-2026-0002', 'Jian Ray', 'Lomibao', 'I.', 'jiansmediaverse@gmail.com', '2026-07-14', 'Station 2', 'Main Learning Commons', '08:00:00', '10:00:00', '2026-07-13 11:41:07', 'expired'),
-(7, 'LC-07-13-2026-0003', 'Jian Ray', 'Lomibao', 'I.', 'jiansmediaverse@gmail.com', '2026-07-14', 'Station 2', 'Main Learning Commons', '08:00:00', '10:00:00', '2026-07-13 11:43:03', 'expired'),
-(11, 'LC-07-14-2026-0001', 'Jian Ray', 'Lomibao', 'I.', 'jianraylomibao.official@gmail.com', '2026-07-14', 'Station 4', 'Main Learning Commons', '12:30:00', '13:00:00', '2026-07-14 04:28:23', 'completed'),
-(12, 'LC-07-15-2026-0001', 'Jian Ray', 'Lomibao', 'I.', 'jianraylomibao.official@gmail.com', '2026-07-15', 'Station 1', 'Main Learning Commons', '11:30:00', '12:30:00', '2026-07-15 03:33:35', 'completed'),
-(13, 'LC-07-17-2026-0001', 'Jian Ray', 'Lomibao', 'I', 'jianraylomibao.official@gmail.com', '2026-07-17', 'Station 1', 'Main Learning Commons', '14:30:00', '15:00:00', '2026-07-17 06:27:40', 'completed');
+(3, 'LC-07-12-2026-0001', 'Juan', 'Dela Cruz', 'S.', 'sample.student1@gmail.com', '2026-07-13', 'Station 2', 'Main Learning Commons', '08:00:00', '10:00:00', '2026-07-12 00:34:38', 'expired'),
+(4, 'LC-07-12-2026-0002', 'Juan', 'Dela Cruz', 'S.', 'sample.student1@gmail.com', '2026-07-13', 'Station 6', 'Main Learning Commons', '12:00:00', '13:00:00', '2026-07-12 01:06:20', 'expired'),
+(5, 'LC-07-13-2026-0001', 'Juan', 'Dela Cruz', 'S.', 'sample.student1@gmail.com', '2026-07-13', 'Station 3', 'Main Learning Commons', '12:00:00', '14:00:00', '2026-07-13 04:15:56', 'expired'),
+(6, 'LC-07-13-2026-0002', 'Juan', 'Dela Cruz', 'S.', 'sample.student1@gmail.com', '2026-07-14', 'Station 2', 'Main Learning Commons', '08:00:00', '10:00:00', '2026-07-13 11:41:07', 'expired'),
+(7, 'LC-07-13-2026-0003', 'Juan', 'Dela Cruz', 'S.', 'sample.student1@gmail.com', '2026-07-14', 'Station 2', 'Main Learning Commons', '08:00:00', '10:00:00', '2026-07-13 11:43:03', 'expired'),
+(11, 'LC-07-14-2026-0001', 'Juan', 'Dela Cruz', 'S.', 'sample.student2@gmail.com', '2026-07-14', 'Station 4', 'Main Learning Commons', '12:30:00', '13:00:00', '2026-07-14 04:28:23', 'completed'),
+(12, 'LC-07-15-2026-0001', 'Juan', 'Dela Cruz', 'S.', 'sample.student2@gmail.com', '2026-07-15', 'Station 1', 'Main Learning Commons', '11:30:00', '12:30:00', '2026-07-15 03:33:35', 'completed'),
+(13, 'LC-07-17-2026-0001', 'Juan', 'Dela Cruz', 'S', 'sample.student2@gmail.com', '2026-07-17', 'Station 1', 'Main Learning Commons', '14:30:00', '15:00:00', '2026-07-17 06:27:40', 'completed');
 
 -- --------------------------------------------------------
 
@@ -99,7 +99,7 @@ CREATE TABLE `restrictions` (
 --
 
 INSERT INTO `restrictions` (`id`, `first_name`, `last_name`, `mi`, `gsfe_email`, `restricted_at`, `restricted_until`, `active`) VALUES
-(1, 'Jian Ray', 'Lomibao', 'I.', 'jiansmediaverse@gmail.com', '2026-07-15 11:31:33', '2026-08-14 11:31:33', 1);
+(1, 'Juan', 'Dela Cruz', 'S.', 'sample.student1@gmail.com', '2026-07-15 11:31:33', '2026-08-14 11:31:33', 1);
 
 -- --------------------------------------------------------
 

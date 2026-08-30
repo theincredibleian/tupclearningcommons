@@ -17,10 +17,19 @@
             </div>
             <div>
                 <h4>Technological University of the Philippines - Cavite</h4>
-                <h2>Learning Commons</h2>
+                <h2>Learning Commons Management</h2>
             </div>
         </div>
+        <nav class="menu">
+            <a href="/dashboard" class="navbar-menu-btn active">Home</a>
+            <a href="/manage-stations" class="navbar-menu-btn">Learning Commons</a>
+            <a href="/scheduling" class="navbar-menu-btn">Scheduling</a>
+            <a href="/login-management" class="navbar-menu-btn">Login Management</a>
+            <a href="/logout" class="navbar-menu-btn">Log Out</a>
+        </nav>
     </div>
+
+<!-- ==================================================== -->
 
     <!-- MAIN CONTENT -->
     <div class="main-content" style="gap: 1rem;">
@@ -42,8 +51,9 @@
 
                             <div style="display:flex;flex-direction:column;">
                                 <select id="dashboard-location-select" class="location-pill">
-                                    <option value="Main Learning Commons">Main Learning Commons</option>
-                                    <option value="Learning Commons 2">Learning Commons 2</option>
+                                    {% for loc in locations %}
+                                    <option value="{{ loc }}">{{ loc }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
 
@@ -62,6 +72,11 @@
                     The Learning Commons is closed for the selected date.
                 </div>
 
+                <!-- NO LOCATIONS NOTICE -->
+                <div id="no-locations-notice" class="closed-notice" style="display:none;">
+                    No active locations are currently configured.
+                </div>
+
                 <!-- TIMELINE -->
                 <div class="timeline-outer">
                     <button type="button" class="scroll-btn scroll-left" id="scrollLeftBtn" aria-label="Scroll left">&lsaquo;</button>
@@ -71,11 +86,6 @@
                     </div>
 
                     <button type="button" class="scroll-btn scroll-right" id="scrollRightBtn" aria-label="Scroll right">&rsaquo;</button>
-                </div>
-
-                <!-- BUTTONS -->
-                <div class="buttons">
-                    <button class="gray-btn" type="button" onclick="window.location.href='detailed-status.html'">More Information</button>
                 </div>
             </div>
         </div>
@@ -188,6 +198,70 @@
         }
 
         // -------------------------------------------------------
+        // FETCH ACTIVE LOCATIONS FROM THE SERVER
+        //
+        // Same pattern as dashboard.html's fetchLocations() /
+        // populateLocationSelects(): the "Location" dropdown is kept in
+        // sync with the `stations` table (GET /api/locations) instead
+        // of a hardcoded list, so any location added/renamed/closed via
+        // the admin system's Manage Stations page shows up here
+        // automatically - and reservations under a newly added
+        // location aren't invisible just because the dropdown never
+        // offered it. cache: "no-store" matches dashboard.html so this
+        // page never renders a browser-cached copy of the location list.
+        // -------------------------------------------------------
+
+        function populateLocationSelect(locations) {
+            const locationSelect = document.getElementById("dashboard-location-select");
+            const noLocationsNotice = document.getElementById("no-locations-notice");
+            const timelineScroll = document.getElementById("timelineScroll");
+
+            if (!Array.isArray(locations) || locations.length === 0) {
+                locationSelect.innerHTML = "";
+                noLocationsNotice.style.display = "block";
+                timelineScroll.style.display = "none";
+                return;
+            }
+
+            noLocationsNotice.style.display = "none";
+
+            const previousValue = locationSelect.value;
+
+            locationSelect.innerHTML = "";
+            locations.forEach(function (loc) {
+                const option = document.createElement("option");
+                option.value = loc;
+                option.textContent = loc;
+                locationSelect.appendChild(option);
+            });
+
+            if (locations.includes(previousValue)) {
+                // Keep whatever the user had selected, if it's still active.
+                locationSelect.value = previousValue;
+            } else {
+                // The location currently being viewed disappeared (e.g. it
+                // was deactivated) - fall back to the first active one and
+                // refresh the timeline to match.
+                locationSelect.value = locations[0];
+                fetchStationSchedule();
+            }
+        }
+
+        async function fetchLocations() {
+            try {
+                const response = await fetch("/api/locations", { cache: "no-store" });
+                const result = await response.json();
+                if (result.success && Array.isArray(result.locations)) {
+                    populateLocationSelect(result.locations);
+                } else {
+                    console.error("Failed to load locations:", result.message);
+                }
+            } catch (err) {
+                console.error("Could not reach /api/locations:", err);
+            }
+        }
+
+        // -------------------------------------------------------
         // FETCH STATION SCHEDULE FROM THE SERVER
         //
         // Reads from the same database as dashboard.html via:
@@ -214,11 +288,20 @@
             const locationSelect = document.getElementById("dashboard-location-select");
             const dateInput = document.getElementById("appt_date");
 
-            const location = locationSelect ? locationSelect.value : "Main Learning Commons";
+            const location = locationSelect ? locationSelect.value : "";
             const date = dateInput && dateInput.value ? dateInput.value : todayISO();
 
             const closedNotice = document.getElementById("closed-notice");
             const timelineScroll = document.getElementById("timelineScroll");
+
+            if (!location) {
+                // No active locations configured - fetchLocations()
+                // already shows the "no locations" notice in this case.
+                stationsData = [];
+                renderTimeline();
+                renderSummary();
+                return;
+            }
 
             if (isSelectedDateWeekend()) {
                 stationsData = [];
@@ -233,7 +316,11 @@
             timelineScroll.style.display = "block";
 
             try {
-                const response = await fetch(`/api/station-schedule?date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}`);
+                // cache: "no-store" ensures we never render a browser-cached
+                // copy of this response - matches dashboard.html's
+                // fetchStationStatus() so the timeline always reflects
+                // whatever is currently in the database.
+                const response = await fetch(`/api/station-schedule?date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}`, { cache: "no-store" });
                 const result = await response.json();
 
                 if (!result.success) {
@@ -453,8 +540,14 @@
 
         document.getElementById("appt_date").value = todayISO();
 
-        fetchStationSchedule();                         // initial load from the database
-        setInterval(fetchStationSchedule, 15000);        // refresh every 15 seconds
+        // Same init pattern as dashboard.html: the dropdown is already
+        // correctly populated server-side (Jinja `locations` loop), so
+        // the first schedule fetch doesn't need to wait on the location
+        // fetch - it just runs against whatever's already selected.
+        fetchLocations();                        // populate the location dropdown from the database
+        fetchStationSchedule();                  // initial load from the database
+        setInterval(fetchStationSchedule, 15000); // refresh the timeline every 15 seconds
+        setInterval(fetchLocations, 60000);       // pick up location changes every minute
 
         document.getElementById("dashboard-location-select").addEventListener("change", function () {
             currentPage = 0;

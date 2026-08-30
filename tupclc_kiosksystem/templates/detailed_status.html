@@ -6,6 +6,57 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <title>Availability Status | TUPC Learning Commons</title>
+
+    <!--
+        Page-scoped layout fix (this page only - does not touch other
+        pages that share style.css). It builds a real height chain from
+        the viewport down to the timeline so the timeline can flex to
+        fill whatever room is left, instead of growing past the window.
+    -->
+    <style>
+        /* Every element sized by width/height already INCLUDES its own
+           padding and border. Without this, a couple of elements here
+           add padding on top of a flex-computed size, which is normally
+           invisible but can round to 1-2px over budget at odd browser
+           zoom levels (90%, 110%, 125%...) and force a stray scrollbar
+           or clipped edge. This closes that gap at every zoom level. */
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* the page itself never scrolls, in either direction */
+        }
+
+        .navbar {
+            flex: 0 0 auto;
+        }
+
+        .main-content {
+            flex: 1 1 auto;
+            min-height: 0; /* lets this row shrink instead of overflowing the viewport */
+            min-width: 0;  /* same, but sideways - stops wide content pushing the page out */
+        }
+
+        .left-panel {
+            display: flex;
+            min-height: 0;
+            min-width: 0;
+        }
+
+        .status-card {
+            min-height: 0;
+            min-width: 0;
+        }
+    </style>
 </head>
 
 <body>
@@ -42,8 +93,9 @@
 
                             <div style="display:flex;flex-direction:column;">
                                 <select id="dashboard-location-select" class="location-pill">
-                                    <option value="Main Learning Commons">Main Learning Commons</option>
-                                    <option value="Learning Commons 2">Learning Commons 2</option>
+                                    {% for loc in locations %}
+                                    <option value="{{ loc }}">{{ loc }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
 
@@ -57,25 +109,26 @@
                 <!-- STATUS SUMMARY (optional quick counts) -->
                 <div id="status-summary" class="status-summary"></div>
 
-                <!-- CLOSED NOTICE -->
-                <div id="closed-notice" class="closed-notice" style="display:none;">
-                    The Learning Commons is closed for the selected date.
+                <!-- NO LOCATIONS NOTICE -->
+                <div id="no-locations-notice" class="closed-notice" style="display:none;">
+                    No active locations are currently configured.
                 </div>
 
                 <!-- TIMELINE -->
+                <!-- The arrows always flank the timeline box, even on a day the
+                     Learning Commons is closed, so the user can keep stepping
+                     through dates without the layout jumping around. -->
                 <div class="timeline-outer">
-                    <button type="button" class="scroll-btn scroll-left" id="scrollLeftBtn" aria-label="Scroll left">&lsaquo;</button>
+                    <button type="button" class="scroll-btn scroll-left" id="scrollLeftBtn" aria-label="Previous day" title="Previous day" onclick="shiftSelectedDate(-1)">&lsaquo;</button>
 
                     <div class="timeline-scroll" id="timelineScroll">
                         <div class="timeline-grid" id="timelineGrid"></div>
+                        <div id="closed-notice" class="closed-notice timeline-message" style="display:none;">
+                            The Learning Commons is closed for the selected date.
+                        </div>
                     </div>
 
-                    <button type="button" class="scroll-btn scroll-right" id="scrollRightBtn" aria-label="Scroll right">&rsaquo;</button>
-                </div>
-
-                <!-- BUTTONS -->
-                <div class="buttons">
-                    <button class="gray-btn" type="button" onclick="window.location.href='detailed-status.html'">More Information</button>
+                    <button type="button" class="scroll-btn scroll-right" id="scrollRightBtn" aria-label="Next day" title="Next day" onclick="shiftSelectedDate(1)">&rsaquo;</button>
                 </div>
             </div>
         </div>
@@ -91,7 +144,9 @@
         const DAY_END_HOUR   = 17;  // 5:00 PM
         const SLOT_MINUTES   = 30;  // half-hour resolution for block placement
         const SLOTS_PER_DAY  = ((DAY_END_HOUR - DAY_START_HOUR) * 60) / SLOT_MINUTES; // 18
-        const STATION_COL_WIDTH = 130; // px, must match style.css
+        const TIME_COL_WIDTH = 90;  // px, the sticky time-label column - must match style.css
+        const VISIBLE_STATIONS = 8; // how many station columns should fit on screen before scrolling kicks in
+        const MIN_STATION_COL_WIDTH = 90; // px floor so columns never get too narrow to read
         const HOUR_LABELS = [];
         for (let h = DAY_START_HOUR; h <= DAY_END_HOUR; h++) {
             HOUR_LABELS.push(h);
@@ -188,6 +243,70 @@
         }
 
         // -------------------------------------------------------
+        // FETCH ACTIVE LOCATIONS FROM THE SERVER
+        //
+        // Same pattern as dashboard.html's fetchLocations() /
+        // populateLocationSelects(): the "Location" dropdown is kept in
+        // sync with the `stations` table (GET /api/locations) instead
+        // of a hardcoded list, so any location added/renamed/closed via
+        // the admin system's Manage Stations page shows up here
+        // automatically - and reservations under a newly added
+        // location aren't invisible just because the dropdown never
+        // offered it. cache: "no-store" matches dashboard.html so this
+        // page never renders a browser-cached copy of the location list.
+        // -------------------------------------------------------
+
+        function populateLocationSelect(locations) {
+            const locationSelect = document.getElementById("dashboard-location-select");
+            const noLocationsNotice = document.getElementById("no-locations-notice");
+            const timelineScroll = document.getElementById("timelineScroll");
+
+            if (!Array.isArray(locations) || locations.length === 0) {
+                locationSelect.innerHTML = "";
+                noLocationsNotice.style.display = "block";
+                timelineScroll.style.display = "none";
+                return;
+            }
+
+            noLocationsNotice.style.display = "none";
+
+            const previousValue = locationSelect.value;
+
+            locationSelect.innerHTML = "";
+            locations.forEach(function (loc) {
+                const option = document.createElement("option");
+                option.value = loc;
+                option.textContent = loc;
+                locationSelect.appendChild(option);
+            });
+
+            if (locations.includes(previousValue)) {
+                // Keep whatever the user had selected, if it's still active.
+                locationSelect.value = previousValue;
+            } else {
+                // The location currently being viewed disappeared (e.g. it
+                // was deactivated) - fall back to the first active one and
+                // refresh the timeline to match.
+                locationSelect.value = locations[0];
+                fetchStationSchedule();
+            }
+        }
+
+        async function fetchLocations() {
+            try {
+                const response = await fetch("/api/locations", { cache: "no-store" });
+                const result = await response.json();
+                if (result.success && Array.isArray(result.locations)) {
+                    populateLocationSelect(result.locations);
+                } else {
+                    console.error("Failed to load locations:", result.message);
+                }
+            } catch (err) {
+                console.error("Could not reach /api/locations:", err);
+            }
+        }
+
+        // -------------------------------------------------------
         // FETCH STATION SCHEDULE FROM THE SERVER
         //
         // Reads from the same database as dashboard.html via:
@@ -214,26 +333,42 @@
             const locationSelect = document.getElementById("dashboard-location-select");
             const dateInput = document.getElementById("appt_date");
 
-            const location = locationSelect ? locationSelect.value : "Main Learning Commons";
+            const location = locationSelect ? locationSelect.value : "";
             const date = dateInput && dateInput.value ? dateInput.value : todayISO();
 
             const closedNotice = document.getElementById("closed-notice");
-            const timelineScroll = document.getElementById("timelineScroll");
+            const timelineGrid = document.getElementById("timelineGrid");
 
-            if (isSelectedDateWeekend()) {
+            if (!location) {
+                // No active locations configured - fetchLocations()
+                // already shows the "no locations" notice in this case.
                 stationsData = [];
                 renderTimeline();
                 renderSummary();
-                closedNotice.style.display = "block";
-                timelineScroll.style.display = "none";
                 return;
             }
 
+            if (isSelectedDateWeekend()) {
+                // The timeline box itself (and the prev/next day arrows
+                // flanking it) stays on screen - only its contents swap
+                // to the closed message - so the user can keep stepping
+                // through dates without anything jumping around.
+                stationsData = [];
+                renderSummary();
+                timelineGrid.style.display = "none";
+                closedNotice.style.display = "flex";
+                return;
+            }
+
+            timelineGrid.style.display = "grid";
             closedNotice.style.display = "none";
-            timelineScroll.style.display = "block";
 
             try {
-                const response = await fetch(`/api/station-schedule?date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}`);
+                // cache: "no-store" ensures we never render a browser-cached
+                // copy of this response - matches dashboard.html's
+                // fetchStationStatus() so the timeline always reflects
+                // whatever is currently in the database.
+                const response = await fetch(`/api/station-schedule?date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}`, { cache: "no-store" });
                 const result = await response.json();
 
                 if (!result.success) {
@@ -281,6 +416,20 @@
         // RENDER TIMELINE (time on the Y axis, stations on the X axis)
         // -------------------------------------------------------
 
+        // Sizes each station column so that, whenever there's room, exactly
+        // VISIBLE_STATIONS columns fill the box edge-to-edge - fewer
+        // stations stretch to fill the same space, more stations keep that
+        // same width and scroll horizontally past it. Recomputed from the
+        // box's live clientWidth, so it also adapts to window resizes and
+        // browser zoom instead of relying on a fixed pixel value.
+        function computeStationColWidth(stationCount) {
+            const scroller = document.getElementById("timelineScroll");
+            const availableWidth = scroller.clientWidth - TIME_COL_WIDTH;
+            const columnsToFit = Math.min(VISIBLE_STATIONS, Math.max(stationCount, 1));
+            const width = availableWidth / columnsToFit;
+            return Math.max(width, MIN_STATION_COL_WIDTH);
+        }
+
         function renderTimeline() {
             const grid = document.getElementById("timelineGrid");
             grid.innerHTML = "";
@@ -288,8 +437,9 @@
             const stationCount = stationsData.length;
             const totalBodyRows = SLOTS_PER_DAY; // 18 half-hour rows
             const totalRows = 1 + totalBodyRows + 1; // header + body + zero-height closing row
+            const stationColWidth = computeStationColWidth(stationCount);
 
-            grid.style.gridTemplateColumns = `90px repeat(${stationCount}, ${STATION_COL_WIDTH}px)`;
+            grid.style.gridTemplateColumns = `${TIME_COL_WIDTH}px repeat(${stationCount}, ${stationColWidth}px)`;
             grid.style.gridTemplateRows = `45px repeat(${totalBodyRows}, 35px) 20px`;
 
             // Corner cell
@@ -365,8 +515,6 @@
                     grid.appendChild(block);
                 });
             });
-
-            updatePaginationButtons();
         }
 
         // -------------------------------------------------------
@@ -394,58 +542,34 @@
         }
 
         // -------------------------------------------------------
-        // PAGINATION CONTROLS
-        // Each arrow click advances/retreats by exactly one "page"
-        // worth of stations, sized to however many columns actually
-        // fit in the visible timeline area right now.
+        // DATE NAVIGATION (prev/next day arrows)
+        // Single page, single date: the left arrow steps the date
+        // picker back one day, the right arrow steps it forward one
+        // day, and each click reloads that day's schedule. Scrolling
+        // *through* a day's timeline (more stations than fit, or more
+        // of the day than fits vertically) is handled by the timeline
+        // box's own scrollbars instead - the arrows only ever change
+        // which date is showing.
         // -------------------------------------------------------
 
-        let currentPage = 0;
+        function shiftSelectedDate(deltaDays) {
+            const dateInput = document.getElementById("appt_date");
 
-        function getVisibleStationCount() {
-            const scroller = document.getElementById("timelineScroll");
-            const availableWidth = scroller.clientWidth - 90; // minus the sticky time column
-            return Math.max(1, Math.floor(availableWidth / STATION_COL_WIDTH));
+            // Fall back to today if the field is somehow empty so a
+            // click never silently does nothing.
+            const base = dateInput.value ? dateInput.value : todayISO();
+            const [y, m, d] = base.split("-").map(Number);
+
+            const next = new Date(y, m - 1, d);
+            next.setDate(next.getDate() + deltaDays);
+
+            const yyyy = next.getFullYear();
+            const mm = String(next.getMonth() + 1).padStart(2, "0");
+            const dd = String(next.getDate()).padStart(2, "0");
+            dateInput.value = `${yyyy}-${mm}-${dd}`;
+
+            fetchStationSchedule();
         }
-
-        function getTotalPages() {
-            const visible = getVisibleStationCount();
-            return Math.max(1, Math.ceil(stationsData.length / visible));
-        }
-
-        function goToPage(page) {
-            const visible = getVisibleStationCount();
-            const maxPage = getTotalPages() - 1;
-            currentPage = Math.min(Math.max(page, 0), maxPage);
-
-            document.getElementById("timelineScroll").scrollTo({
-                left: currentPage * visible * STATION_COL_WIDTH,
-                behavior: "smooth",
-            });
-
-            updatePaginationButtons();
-        }
-
-        function updatePaginationButtons() {
-            const maxPage = getTotalPages() - 1;
-            if (currentPage > maxPage) currentPage = maxPage;
-            if (currentPage < 0) currentPage = 0;
-
-            const leftBtn = document.getElementById("scrollLeftBtn");
-            const rightBtn = document.getElementById("scrollRightBtn");
-            leftBtn.disabled = currentPage <= 0;
-            rightBtn.disabled = currentPage >= maxPage;
-        }
-
-        document.getElementById("scrollLeftBtn").addEventListener("click", function () {
-            goToPage(currentPage - 1);
-        });
-
-        document.getElementById("scrollRightBtn").addEventListener("click", function () {
-            goToPage(currentPage + 1);
-        });
-
-        window.addEventListener("resize", updatePaginationButtons);
 
         // -------------------------------------------------------
         // INIT
@@ -453,16 +577,25 @@
 
         document.getElementById("appt_date").value = todayISO();
 
-        fetchStationSchedule();                         // initial load from the database
-        setInterval(fetchStationSchedule, 15000);        // refresh every 15 seconds
+        // Same init pattern as dashboard.html: the dropdown is already
+        // correctly populated server-side (Jinja `locations` loop), so
+        // the first schedule fetch doesn't need to wait on the location
+        // fetch - it just runs against whatever's already selected.
+        fetchLocations();                        // populate the location dropdown from the database
+        fetchStationSchedule();                  // initial load from the database
+        setInterval(fetchStationSchedule, 15000); // refresh the timeline every 15 seconds
+        setInterval(fetchLocations, 60000);       // pick up location changes every minute
 
-        document.getElementById("dashboard-location-select").addEventListener("change", function () {
-            currentPage = 0;
-            fetchStationSchedule();
-        });
-        document.getElementById("appt_date").addEventListener("change", function () {
-            currentPage = 0;
-            fetchStationSchedule();
+        document.getElementById("dashboard-location-select").addEventListener("change", fetchStationSchedule);
+        document.getElementById("appt_date").addEventListener("change", fetchStationSchedule);
+
+        // Re-measure and redraw the existing data (no need to refetch) any
+        // time the window is resized or the browser zoom level changes, so
+        // the station column width keeps matching the box's current size.
+        let resizeRedrawTimer = null;
+        window.addEventListener("resize", function () {
+            clearTimeout(resizeRedrawTimer);
+            resizeRedrawTimer = setTimeout(renderTimeline, 100);
         });
     </script>
 </body>

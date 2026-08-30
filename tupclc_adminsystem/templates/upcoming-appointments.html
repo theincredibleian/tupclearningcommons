@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <title>Ongoing Sessions | TUPC Learning Commons Management</title>
+    <title>Upcoming Appointments | TUPC Learning Commons Management</title>
 </head>
 
-<body class="history-page">
+<body>
     <!-- NAVIGATION BAR -->
     <div class="navbar">
         <div class="navbar-content">
@@ -37,10 +37,10 @@
             <button class="tab-btn-left">Appointment History</button>
         </a>
         <a href="/upcoming-appointments" class="tab-link">
-            <button class="tab-btn-middle">Upcoming Appointments</button>
+            <button class="tab-btn-middle active-tab">Upcoming Appointments</button>
         </a>
         <a href="/ongoing-sessions" class="tab-link">
-            <button class="tab-btn-right active-tab">Ongoing Sessions</button>
+            <button class="tab-btn-right">Ongoing Sessions</button>
         </a>
     </div>
 
@@ -50,29 +50,10 @@
 <div class="history-container">
 
     <div class="history-top">
-        <h1>Ongoing Sessions</h1>
-    </div>
-
-    <!-- SORT CONTROLS -->
-    <div class="history-filter">
-        <label for="sort-by-select">Sort by:</label>
-        <select id="sort-by-select">
-            <option value="date" selected>Date</option>
-            <option value="name">Name</option>
-            <option value="start_time">Start Time</option>
-            <option value="location">Location</option>
-            <option value="station_no">Station No.</option>
-        </select>
-
-        <label for="sort-order-select">Order:</label>
-        <select id="sort-order-select">
-            <option value="asc" selected>Ascending</option>
-            <option value="desc">Descending</option>
-        </select>
+        <h1>Upcoming Appointments</h1>
     </div>
 
     <!-- TABLE -->
-    <div class="history-table-wrapper">
     <table class="history-table">
 
         <thead>
@@ -80,6 +61,7 @@
                 <th>Name</th>
                 <th>Date</th>
                 <th>Start Time</th>
+                <th>End Time</th>
                 <th>Location</th>
                 <th>Station No.</th>
                 <th>Status</th>
@@ -87,12 +69,11 @@
             </tr>
         </thead>
 
-        <tbody id="ongoing-sessions-body">
-            <!-- Populated live from /api/ongoing-sessions -->
+        <tbody id="upcoming-appointments-body">
+            <!-- Populated live from /api/upcoming-appointments -->
         </tbody>
 
     </table>
-    </div>
 
 </div>
 
@@ -101,7 +82,7 @@
 <!-- APPOINTMENT DETAILS OVERLAY -->
 <div class="overlay-backdrop" id="details-overlay">
     <div class="overlay-box">
-        <h3>Session Details</h3>
+        <h3>Appointment Details</h3>
 
         <p><strong>Name:</strong> <span id="detail-name"></span></p>
         <p><strong>ID Number:</strong> <span id="detail-id"></span></p>
@@ -114,6 +95,7 @@
         <p><strong>Status:</strong> <span id="detail-status"></span></p>
 
         <div class="overlay-buttons">
+            <button class="red-btn" id="detail-remove-btn">Remove Reservation</button>
             <button class="gray-btn" id="detail-close-btn">Close</button>
         </div>
     </div>
@@ -124,22 +106,21 @@
     <script>
 
         // =========================================================
-        // ONGOING SESSIONS PAGE
-        // Lists every appointment currently "occupied" (i.e. the
-        // student has checked in via QR scan and hasn't signed out
-        // yet), pulled from /api/ongoing-sessions. Sortable
-        // client-side by the "Sort by" + ascending/descending
-        // controls; defaults to Date, Ascending (soonest first) on
-        // load. Each row has a "Details" button that opens an
-        // overlay with the full appointment info.
+        // UPCOMING APPOINTMENTS PAGE
+        // Lists every appointment that hasn't been completed or
+        // expired yet (i.e. still "reserved" or currently "occupied"),
+        // pulled from /api/upcoming-appointments. Sorted soonest-first
+        // (date, then start time) by default. Each row has a
+        // "Details" button that opens an overlay with the full
+        // appointment info, plus a "Remove Reservation" button that
+        // cancels the booking outright via /api/appointments/cancel.
         // =========================================================
 
-        const SESSIONS_POLL_MS = 15000; // refresh every 15s
+        const UPCOMING_POLL_MS = 15000; // refresh every 15s
 
-        const sessionsBody = document.getElementById("ongoing-sessions-body");
+        const upcomingBody = document.getElementById("upcoming-appointments-body");
         const detailsOverlay = document.getElementById("details-overlay");
-        const sortBySelect = document.getElementById("sort-by-select");
-        const sortOrderSelect = document.getElementById("sort-order-select");
+        const removeBtn = document.getElementById("detail-remove-btn");
 
         const STATUS_LABELS = {
             reserved: "Reserved",
@@ -148,17 +129,9 @@
             completed: "Completed",
         };
 
-        // Maps each "Sort by" option to the sort-friendly field the
-        // server sends alongside the display text for that column.
-        const SORT_FIELD_MAP = {
-            date: "date_sort",
-            name: "name_sort",
-            start_time: "start_time_sort",
-            location: "location",
-            station_no: "station_sort",
-        };
-
-        let sessionsData = [];
+        // The appointment currently shown in the details overlay, so
+        // the Remove Reservation button knows which one to cancel.
+        let currentAppointment = null;
 
         function statusClass(status) {
             if (status === "occupied") return "occupied-text";
@@ -168,96 +141,71 @@
         }
 
         // -------------------------------------------------------
-        // FETCH
+        // FETCH + RENDER
         // -------------------------------------------------------
 
-        async function fetchOngoingSessions() {
+        async function fetchUpcomingAppointments() {
             try {
-                const response = await fetch("/api/ongoing-sessions");
+                const response = await fetch("/api/upcoming-appointments");
                 const result = await response.json();
 
                 if (!result.success) {
-                    console.error("Failed to load ongoing sessions:", result.message);
+                    console.error("Failed to load upcoming appointments:", result.message);
                     return;
                 }
 
-                sessionsData = result.sessions || [];
-                renderSessions();
+                renderUpcoming(result.appointments || []);
             } catch (err) {
-                console.error("Could not reach /api/ongoing-sessions:", err);
+                console.error("Could not reach /api/upcoming-appointments:", err);
             }
         }
 
-        // -------------------------------------------------------
-        // SORT + RENDER
-        // -------------------------------------------------------
+        function renderUpcoming(appointments) {
+            upcomingBody.innerHTML = "";
 
-        function getSortedSessions() {
-            const sortBy = sortBySelect.value;
-            const order = sortOrderSelect.value;
-            const field = SORT_FIELD_MAP[sortBy] || "date_sort";
-
-            const sorted = sessionsData.slice().sort(function (a, b) {
-                let cmp;
-                if (typeof a[field] === "number" || typeof b[field] === "number") {
-                    cmp = a[field] - b[field];
-                } else {
-                    cmp = String(a[field]).localeCompare(String(b[field]));
-                }
-
-                // Tie-break by date then start time so equal keys keep a
-                // stable, sensible ordering.
-                if (cmp === 0 && field !== "date_sort") {
-                    cmp = String(a.date_sort).localeCompare(String(b.date_sort));
-                }
-                if (cmp === 0 && field !== "start_time_sort") {
-                    cmp = String(a.start_time_sort).localeCompare(String(b.start_time_sort));
-                }
-
-                return order === "desc" ? -cmp : cmp;
-            });
-
-            return sorted;
-        }
-
-        function renderSessions() {
-            const sorted = getSortedSessions();
-            sessionsBody.innerHTML = "";
-
-            if (sorted.length === 0) {
+            if (appointments.length === 0) {
                 const row = document.createElement("tr");
                 const cell = document.createElement("td");
-                cell.colSpan = 7;
-                cell.textContent = "No ongoing sessions right now.";
+                cell.colSpan = 8;
+                cell.textContent = "No upcoming appointments.";
                 cell.style.textAlign = "center";
                 cell.style.color = "#888";
                 cell.style.fontWeight = "normal";
                 row.appendChild(cell);
-                sessionsBody.appendChild(row);
+                upcomingBody.appendChild(row);
                 return;
             }
 
-            sorted.forEach(function (session) {
+            // Soonest first: by date, then start time.
+            const sorted = appointments.slice().sort(function (a, b) {
+                if (a.date_sort !== b.date_sort) return a.date_sort < b.date_sort ? -1 : 1;
+                return a.start_time_sort < b.start_time_sort ? -1 : (a.start_time_sort > b.start_time_sort ? 1 : 0);
+            });
+
+            sorted.forEach(function (appt) {
                 const row = document.createElement("tr");
 
                 const nameCell = document.createElement("td");
-                nameCell.textContent = session.full_name;
+                nameCell.textContent = appt.full_name;
 
                 const dateCell = document.createElement("td");
-                dateCell.textContent = session.date;
+                dateCell.textContent = appt.date;
 
                 const startCell = document.createElement("td");
-                startCell.textContent = session.start_time;
+                startCell.textContent = appt.start_time;
+
+                const endCell = document.createElement("td");
+                endCell.textContent = appt.end_time;
 
                 const locationCell = document.createElement("td");
-                locationCell.textContent = session.location;
+                locationCell.textContent = appt.location;
 
                 const stationCell = document.createElement("td");
-                stationCell.textContent = session.station_no;
+                stationCell.textContent = appt.station_no;
 
                 const statusCell = document.createElement("td");
-                statusCell.textContent = STATUS_LABELS[session.status] || session.status;
-                statusCell.className = statusClass(session.status);
+                statusCell.textContent = STATUS_LABELS[appt.status] || appt.status;
+                statusCell.className = statusClass(appt.status);
 
                 const actionCell = document.createElement("td");
                 actionCell.className = "table-buttons";
@@ -265,47 +213,48 @@
                 btn.className = "table-btn gray-btn";
                 btn.textContent = "Details";
                 btn.addEventListener("click", function () {
-                    showDetails(session);
+                    showDetails(appt);
                 });
                 actionCell.appendChild(btn);
 
                 row.appendChild(nameCell);
                 row.appendChild(dateCell);
                 row.appendChild(startCell);
+                row.appendChild(endCell);
                 row.appendChild(locationCell);
                 row.appendChild(stationCell);
                 row.appendChild(statusCell);
                 row.appendChild(actionCell);
-                sessionsBody.appendChild(row);
+                upcomingBody.appendChild(row);
             });
         }
-
-        sortBySelect.addEventListener("change", renderSessions);
-        sortOrderSelect.addEventListener("change", renderSessions);
 
         // -------------------------------------------------------
         // DETAILS OVERLAY
         // -------------------------------------------------------
 
-        function showDetails(session) {
-            document.getElementById("detail-name").textContent = session.full_name;
-            document.getElementById("detail-id").textContent = session.id_number;
-            document.getElementById("detail-email").textContent = session.gsfe_email;
-            document.getElementById("detail-date").textContent = session.date;
-            document.getElementById("detail-start").textContent = session.start_time;
-            document.getElementById("detail-end").textContent = session.end_time;
-            document.getElementById("detail-location").textContent = session.location;
-            document.getElementById("detail-station").textContent = session.station_no;
+        function showDetails(appt) {
+            currentAppointment = appt;
+
+            document.getElementById("detail-name").textContent = appt.full_name;
+            document.getElementById("detail-id").textContent = appt.id_number;
+            document.getElementById("detail-email").textContent = appt.gsfe_email;
+            document.getElementById("detail-date").textContent = appt.date;
+            document.getElementById("detail-start").textContent = appt.start_time;
+            document.getElementById("detail-end").textContent = appt.end_time;
+            document.getElementById("detail-location").textContent = appt.location;
+            document.getElementById("detail-station").textContent = appt.station_no;
 
             const statusEl = document.getElementById("detail-status");
-            statusEl.textContent = STATUS_LABELS[session.status] || session.status;
-            statusEl.className = statusClass(session.status);
+            statusEl.textContent = STATUS_LABELS[appt.status] || appt.status;
+            statusEl.className = statusClass(appt.status);
 
             detailsOverlay.classList.add("show");
         }
 
         function hideDetails() {
             detailsOverlay.classList.remove("show");
+            currentAppointment = null;
         }
 
         document.getElementById("detail-close-btn").addEventListener("click", hideDetails);
@@ -314,14 +263,47 @@
         });
 
         // -------------------------------------------------------
-        // INIT
-        // Default sort is Date / Ascending (set on the <select>
-        // elements above), so soonest-first ordering is applied as
-        // soon as the first fetch renders it.
+        // REMOVE RESERVATION
         // -------------------------------------------------------
 
-        fetchOngoingSessions();
-        setInterval(fetchOngoingSessions, SESSIONS_POLL_MS);
+        removeBtn.addEventListener("click", async function () {
+            if (!currentAppointment) return;
+
+            const confirmed = window.confirm(
+                "Remove this reservation for " + currentAppointment.full_name + "? This cannot be undone."
+            );
+            if (!confirmed) return;
+
+            removeBtn.disabled = true;
+            try {
+                const response = await fetch("/api/appointments/cancel", {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id_number: currentAppointment.id_number }),
+                });
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert(result.message || "Could not remove this reservation.");
+                    return;
+                }
+
+                hideDetails();
+                fetchUpcomingAppointments();
+            } catch (err) {
+                console.error("Could not reach /api/appointments/cancel:", err);
+                alert("Could not reach the server. Please try again.");
+            } finally {
+                removeBtn.disabled = false;
+            }
+        });
+
+        // -------------------------------------------------------
+        // INIT
+        // -------------------------------------------------------
+
+        fetchUpcomingAppointments();
+        setInterval(fetchUpcomingAppointments, UPCOMING_POLL_MS);
     </script>
 </body>
 </html>

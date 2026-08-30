@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Admin Login | TUPC Learning Commons Management</title>
+</head>
+
+<body class="login-body">
+
+    <div class="login-container">
+        <h3>Technological University of the Philippines - Cavite</h3>
+        <h1>Learning Commons Management</h1>
+
+        <form method="POST" action="/">
+            <label for="password">Admin Password</label>
+            <div class="password-box">
+                <input type="password" id="password" name="password" required autofocus>
+                <span class="eye" id="toggle-password">show</span>
+            </div>
+
+            {% if error %}
+            <p style="color:#c81d3a; font-weight:bold; margin-top:-10px;">{{ error }}</p>
+            {% endif %}
+
+            <button type="submit" class="login-btn">Log In</button>
+        </form>
+    </div>
+
+    <script>
+        const passwordInput = document.getElementById("password");
+        const toggle = document.getElementById("toggle-password");
+        toggle.addEventListener("click", function () {
+            const isHidden = passwordInput.type === "password";
+            passwordInput.type = isHidden ? "text" : "password";
+            toggle.textContent = isHidden ? "hide" : "show";
+        });
+    </script>
+
+</body>
+</html>

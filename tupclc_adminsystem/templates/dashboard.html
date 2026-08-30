@@ -25,7 +25,7 @@
             <a href="/manage-stations" class="navbar-menu-btn">Learning Commons</a>
             <a href="/scheduling" class="navbar-menu-btn">Scheduling</a>
             <a href="/login-management" class="navbar-menu-btn">Login Management</a>
-            <a href="#" class="navbar-menu-btn">Account</a>
+            <a href="/logout" class="navbar-menu-btn">Log Out</a>
         </nav>
     </div>
 
@@ -49,8 +49,7 @@
                         <label class="location-label">Location:</label>
 
                         <select id="dashboard-location-select" class="location-select">
-                            <option value="Main Learning Commons">Main Learning Commons</option>
-                            <option value="Learning Commons 2">Learning Commons 2</option>
+                            <!-- Populated live from /api/locations -->
                         </select>
                     </div>
 
@@ -176,26 +175,66 @@
             closed:   "Closed",
         };
 
-        function isStationClosedNow() {
-            const now = new Date();
-            const day = now.getDay(); // 0 = Sunday, 6 = Saturday
+        // NOTE: stations are closed manually only now (via the Close /
+        // Reopen / Close All / Open All actions on Manage Stations).
+        // There used to also be an automatic "closed outside 8:00
+        // AM-5:00 PM / weekends" rule (first enforced only client-side
+        // here via isStationClosedNow()/applyClosedStatus(), later
+        // moved server-side into compute_station_statuses() in
+        // app.py) - that hardcoded schedule has been removed entirely,
+        // so /api/station-status now just reports whatever's actually
+        // true: today's real appointments plus each station's manual
+        // is_closed flag.
 
-            if (day === 0 || day === 6) {
-                return true;
+        // -------------------------------------------------------
+        // LOCATIONS - fetch + populate the dropdown
+        // Calls /api/locations so the dropdown always matches what's
+        // actually in the database. Previously this select was two
+        // hardcoded <option> tags, so renaming a location via Manage
+        // Stations left the dropdown showing the old (now nonexistent)
+        // name - selecting it, or even just loading the page with it
+        // as the default, made /api/station-status match zero stations
+        // and the grid rendered empty.
+        // -------------------------------------------------------
+
+        async function fetchLocations() {
+            try {
+                const response = await fetch("/api/locations");
+                const result = await response.json();
+
+                if (!result.success) {
+                    console.error("Failed to load locations:", result.message);
+                    return;
+                }
+
+                renderLocationSelect(result.locations);
+            } catch (err) {
+                console.error("Could not reach /api/locations:", err);
             }
-
-            const hour = now.getHours();
-            return hour < 8 || hour >= 17;
         }
 
-        function applyClosedStatus(stations) {
-            if (!isStationClosedNow()) {
+        function renderLocationSelect(locations) {
+            const locationSelect = document.getElementById("dashboard-location-select");
+            if (!locationSelect) {
                 return;
             }
+            const previousValue = locationSelect.value;
+            locationSelect.innerHTML = "";
 
-            stations.forEach(function(station) {
-                station.status = "closed";
+            locations.forEach(function (name) {
+                const option = document.createElement("option");
+                option.value = name;
+                option.textContent = name;
+                locationSelect.appendChild(option);
             });
+
+            // Keep whatever was selected if it still exists (e.g. some
+            // other location was renamed/removed elsewhere); otherwise
+            // this naturally falls back to the first location in the
+            // list, same as a fresh page load.
+            if (locations.includes(previousValue)) {
+                locationSelect.value = previousValue;
+            }
         }
 
         // -------------------------------------------------------
@@ -208,7 +247,16 @@
 
         async function fetchStationStatus() {
             const locationSelect = document.getElementById("dashboard-location-select");
-            const location = locationSelect ? locationSelect.value : "Main Learning Commons";
+            const location = locationSelect ? locationSelect.value : "";
+
+            if (!location) {
+                // No locations configured yet (or the dropdown hasn't
+                // been populated yet) - nothing to fetch.
+                stationsData = [];
+                renderStations();
+                renderSummary();
+                return;
+            }
 
             try {
                 const response = await fetch(`/api/station-status?location=${encodeURIComponent(location)}`);
@@ -238,7 +286,6 @@
                     return stationNum(a) - stationNum(b);
                 });
 
-                applyClosedStatus(stationsData);
                 renderStations();
                 renderSummary();
             } catch (err) {
@@ -393,8 +440,15 @@
                 clearAppointmentDetails();
                 return;
             }
-            const middleInitial = appt.mi ? appt.mi + ". " : "";
-            appointmentFieldEls.name.textContent     = `${appt.first_name} ${middleInitial}${appt.last_name}`;
+            // Use the server-computed display_name when present (handles
+            // group bookings, where first_name/last_name are blank and
+            // the group representative's name should show instead).
+            let displayName = appt.display_name;
+            if (!displayName) {
+                const middleInitial = appt.mi ? appt.mi + ". " : "";
+                displayName = `${appt.first_name} ${middleInitial}${appt.last_name}`;
+            }
+            appointmentFieldEls.name.textContent     = displayName;
             appointmentFieldEls.date.textContent     = appt.date;
             appointmentFieldEls.timein.textContent   = appt.start_time;
             appointmentFieldEls.timeout.textContent  = appt.end_time;
@@ -616,9 +670,15 @@
         // INIT
         // -------------------------------------------------------
         renderDateTime();
-        fetchStationStatus();               // initial load from the database
+
+        async function refreshDashboard() {
+            await fetchLocations();     // keep the dropdown in sync with the database...
+            await fetchStationStatus(); // ...then load status for whichever location ends up selected
+        }
+
+        refreshDashboard();
         setInterval(renderDateTime, 1000);
-        setInterval(fetchStationStatus, 15000);  // refresh availability every 15 seconds
+        setInterval(refreshDashboard, 15000);  // refresh locations + availability every 15 seconds
 
         // Re-fetch immediately when the viewer switches location
         const dashboardLocationSelect = document.getElementById("dashboard-location-select");

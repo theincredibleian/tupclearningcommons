@@ -5,11 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='right-panel.css') }}">
     <title>Dashboard | TUPC Learning Commons</title>
 </head>
 
-<body>
+<body class="dashboard-body">
     <!-- NAVIGATION BAR -->
     <div class="navbar">
         <div class="navbar-content">
@@ -41,8 +40,9 @@
                         <label class="location-label">Location:</label>
 
                         <select id="dashboard-location-select" class="location-select">
-                            <option value="Main Learning Commons">Main Learning Commons</option>
-                            <option value="Learning Commons 2">Learning Commons 2</option>
+                            {% for loc in locations %}
+                            <option value="{{ loc }}">{{ loc }}</option>
+                            {% endfor %}
                         </select>
                     </div>
 
@@ -50,8 +50,10 @@
                     <div class="status-right" id="status-summary"></div>
                 </div>
 
-                <!-- STATIONS -->
-                <div class="stations" id="stations-container"></div>
+                <!-- STATIONS (scrolls within the card, like the reservation modal's body) -->
+                <div class="stations-scroll">
+                    <div class="stations" id="stations-container"></div>
+                </div>
 
                 <!-- BUTTONS -->
                 <div class="buttons">
@@ -161,8 +163,10 @@
                 <button type="button" id="btn-close-reserve" class="modal-close-btn" aria-label="Close">&times;</button>
             </div>
 
-            <!-- CONFIRMATION BANNER (hidden until a submission happens) -->
-            <div id="confirmation-banner" class="confirmation-banner"></div>
+            <!-- Scrollable region: everything below the header scrolls in here,
+                 so the header stays put and the scrollbar clips to the modal's
+                 rounded corners instead of the whole box scrolling. -->
+            <div class="modal-scroll-content">
 
             <!-- ============================================
                  RESERVATION TYPE TABS
@@ -211,23 +215,16 @@
                                 <div style="flex: 1; min-width: 180px;">
                                     <label class="appointment-label">Station No.</label>
                                     <select id="station_no" class="form-dropdown" required>
-                                        <option value="Station 1">Station 1</option>
-                                        <option value="Station 2">Station 2</option>
-                                        <option value="Station 3">Station 3</option>
-                                        <option value="Station 4">Station 4</option>
-                                        <option value="Station 5">Station 5</option>
-                                        <option value="Station 6">Station 6</option>
-                                        <option value="Station 7">Station 7</option>
-                                        <option value="Station 8">Station 8</option>
-                                        <option value="Station 9">Station 9</option>
-                                        <option value="Station 10">Station 10</option>
+                                        <!-- Populated dynamically from /api/stations based on the
+                                             selected Location (see fetchStationsForSelect()) -->
                                     </select>
                                 </div>
                                 <div style="flex: 1; min-width: 180px;">
                                     <label class="appointment-label">Location</label>
                                     <select id="appt_location" class="form-dropdown" required>
-                                        <option value="Main Learning Commons">Main Learning Commons</option>
-                                        <option value="Learning Commons 2">Learning Commons 2</option>
+                                        {% for loc in locations %}
+                                        <option value="{{ loc }}">{{ loc }}</option>
+                                        {% endfor %}
                                     </select>
                                 </div>
                             </div>
@@ -279,8 +276,9 @@
                                 <div style="flex: 1; min-width: 180px;">
                                     <label class="appointment-label">Location</label>
                                     <select id="group_appt_location" class="form-dropdown" required>
-                                        <option value="Main Learning Commons">Main Learning Commons</option>
-                                        <option value="Learning Commons 2">Learning Commons 2</option>
+                                        {% for loc in locations %}
+                                        <option value="{{ loc }}">{{ loc }}</option>
+                                        {% endfor %}
                                     </select>
                                 </div>
                                 <div style="flex: 1; min-width: 180px;">
@@ -307,6 +305,8 @@
                 </form>
             </div>
 
+            </div><!-- /.modal-scroll-content -->
+
         </div>
     </div>
 
@@ -332,26 +332,134 @@
             closed:   "Closed",
         };
 
-        function isStationClosedNow() {
-            const now = new Date();
-            const day = now.getDay(); // 0 = Sunday, 6 = Saturday
+        // NOTE: a previous version of this file also forced every
+        // station's status to "closed" client-side whenever it was a
+        // weekend or outside 8am-5pm, regardless of the database. That
+        // overrode the real per-station status - a station marked open
+        // (is_closed = 0) in the `stations` table would still show as
+        // "Closed" on the dashboard just because of the day/time. The
+        // "closed" status shown per station is now driven ENTIRELY by
+        // is_closed in the `stations` table, via /api/station-status -
+        // this file must never re-introduce a business-hours check
+        // (BUSINESS_START_MIN/BUSINESS_END_MIN below) into that status.
+        // Those constants are only for validateAppointmentSlot(), which
+        // gates *scheduling a new appointment* - a separate, intentional
+        // restriction that stays in place.
 
-            if (day === 0 || day === 6) {
-                return true;
-            }
+        // -------------------------------------------------------
+        // LOCATION DROPDOWNS - ADAPTIVE TO THE DATABASE
+        // Instead of a hardcoded list, every "Location" dropdown on the
+        // page (the dashboard filter, the individual reservation form,
+        // and the group reservation form) is populated from whatever
+        // locations are currently active in the database, via
+        // /api/locations. Re-fetched periodically so the kiosk picks up
+        // location changes (e.g. a location closed/reopened by an admin)
+        // without needing a page reload.
+        // -------------------------------------------------------
 
-            const hour = now.getHours();
-            return hour < 8 || hour >= 17;
-        }
+        const LOCATION_SELECT_IDS = ["dashboard-location-select", "appt_location", "group_appt_location"];
 
-        function applyClosedStatus(stations) {
-            if (!isStationClosedNow()) {
+        function populateLocationSelects(locations) {
+            if (!Array.isArray(locations) || locations.length === 0) {
                 return;
             }
 
-            stations.forEach(function(station) {
-                station.status = "closed";
+            LOCATION_SELECT_IDS.forEach(function (id) {
+                const select = document.getElementById(id);
+                if (!select) {
+                    return;
+                }
+
+                const previousValue = select.value;
+
+                select.innerHTML = "";
+                locations.forEach(function (loc) {
+                    const option = document.createElement("option");
+                    option.value = loc;
+                    option.textContent = loc;
+                    select.appendChild(option);
+                });
+
+                if (locations.includes(previousValue)) {
+                    // Keep whatever the user had selected, if it's still active.
+                    select.value = previousValue;
+                } else if (id === "dashboard-location-select") {
+                    // The location currently being viewed disappeared (e.g. it
+                    // was deactivated) - fall back to the first active one and
+                    // refresh the station grid to match.
+                    select.value = locations[0];
+                    fetchStationStatus();
+                }
             });
+        }
+
+        async function fetchLocations() {
+            try {
+                const response = await fetch("/api/locations", { cache: "no-store" });
+                const result = await response.json();
+                if (result.success && Array.isArray(result.locations)) {
+                    populateLocationSelects(result.locations);
+                    refreshIndividualStations();
+                    refreshAllStationsList();
+                } else {
+                    console.error("Failed to load locations:", result.message);
+                }
+            } catch (err) {
+                console.error("Could not reach /api/locations:", err);
+            }
+        }
+
+        // -------------------------------------------------------
+        // STATION LIST FOR THE INDIVIDUAL RESERVATION FORM
+        // The "Station No." dropdown is populated from /api/stations
+        // for whichever location is currently selected, so it reflects
+        // the stations table (including closed stations, shown but
+        // disabled) instead of a hardcoded 1-10 list.
+        // -------------------------------------------------------
+
+        async function fetchStationsForSelect(selectId, locationValue) {
+            const select = document.getElementById(selectId);
+            if (!select || !locationValue) {
+                return;
+            }
+
+            try {
+                const params = new URLSearchParams({ location: locationValue });
+                const response = await fetch(`/api/stations?${params.toString()}`, { cache: "no-store" });
+                const result = await response.json();
+                if (!result.success || !Array.isArray(result.stations)) {
+                    console.error("Failed to load stations:", result.message);
+                    return;
+                }
+
+                const previousValue = select.value;
+                select.innerHTML = "";
+                result.stations.forEach(function (station) {
+                    const option = document.createElement("option");
+                    option.value = station.station_no;
+                    option.textContent = station.station_no + (station.is_closed ? " (Closed)" : "");
+                    option.disabled = station.is_closed;
+                    select.appendChild(option);
+                });
+
+                const stillValidAndOpen = Array.from(select.options)
+                    .some(function (o) { return o.value === previousValue && !o.disabled; });
+                if (stillValidAndOpen) {
+                    select.value = previousValue;
+                } else {
+                    const firstOpen = Array.from(select.options).find(function (o) { return !o.disabled; });
+                    if (firstOpen) {
+                        select.value = firstOpen.value;
+                    }
+                }
+            } catch (err) {
+                console.error("Could not reach /api/stations:", err);
+            }
+        }
+
+        function refreshIndividualStations() {
+            const locationSelect = document.getElementById("appt_location");
+            fetchStationsForSelect("station_no", locationSelect ? locationSelect.value : "");
         }
 
         // -------------------------------------------------------
@@ -367,7 +475,10 @@
             const location = locationSelect ? locationSelect.value : "Main Learning Commons";
 
             try {
-                const response = await fetch(`/api/station-status?location=${encodeURIComponent(location)}`);
+                // cache: "no-store" ensures we never render a browser-cached
+                // copy of this response - the grid must always reflect
+                // whatever is_closed currently is in the database.
+                const response = await fetch(`/api/station-status?location=${encodeURIComponent(location)}`, { cache: "no-store" });
                 const result = await response.json();
 
                 if (!result.success) {
@@ -394,7 +505,6 @@
                     return stationNum(a) - stationNum(b);
                 });
 
-                applyClosedStatus(stationsData);
                 renderStations();
                 renderSummary();
             } catch (err) {
@@ -450,7 +560,7 @@
         // -------------------------------------------------------
 
         function renderSummary() {
-            const counts = { vacant: 0, occupied: 0, reserved: 0 };
+            const counts = { vacant: 0, occupied: 0, reserved: 0, closed: 0 };
 
             stationsData.forEach(function(station) {
                 if (counts[station.status] !== undefined) {
@@ -463,6 +573,7 @@
                 "<p>Vacant: "   + counts.vacant   + "</p>" +
                 "<p>Reserved: " + counts.reserved  + "</p>" +
                 "<p>Occupied: " + counts.occupied  + "</p>" +
+                "<p>Closed: "   + counts.closed    + "</p>" +
                 "<p>Total: "    + stationsData.length + "</p>";
         }
 
@@ -487,11 +598,14 @@
         // -------------------------------------------------------
         // QR CODE VERIFICATION + APPOINTMENT DETAILS
         // A hardware QR scanner acts like a keyboard: it "types" the
-        // scanned QR payload (the JSON produced by generate_qr_code()
-        // in app.py) into #qr-scan-input and sends Enter. We parse
-        // that JSON, pull out id_number, and send it to /api/checkin,
-        // which verifies it against today's appointments and reports
-        // back whether it's verified, not verified, or expired.
+        // scanned QR payload into #qr-scan-input and sends Enter. The
+        // QR code (see generate_qr_code() in app.py) now encodes ONLY
+        // the appointment's id_number as plain text - no JSON, no name/
+        // email/date/etc. We take that scanned text as-is and send it
+        // to /api/checkin, which looks the appointment up fresh from
+        // the database and reports back whether it's verified, not
+        // verified, or expired, along with the current details to show
+        // in the "Appointment Details" panel.
         // -------------------------------------------------------
 
         const qrStatusEl = document.getElementById("qrstatus-text");
@@ -549,8 +663,15 @@
                 clearAppointmentDetails();
                 return;
             }
-            const middleInitial = appt.mi ? appt.mi + ". " : "";
-            appointmentFieldEls.name.textContent     = `${appt.first_name} ${middleInitial}${appt.last_name}`;
+            // Use the server-computed display_name when present (handles
+            // group bookings, where first_name/last_name are blank and
+            // the group representative's name should show instead).
+            let displayName = appt.display_name;
+            if (!displayName) {
+                const middleInitial = appt.mi ? appt.mi + ". " : "";
+                displayName = `${appt.first_name} ${middleInitial}${appt.last_name}`;
+            }
+            appointmentFieldEls.name.textContent     = displayName;
             appointmentFieldEls.date.textContent     = appt.date;
             appointmentFieldEls.timein.textContent   = appt.start_time;
             appointmentFieldEls.timeout.textContent  = appt.end_time;
@@ -559,24 +680,13 @@
         }
 
         async function handleQrScan(rawValue) {
-            const trimmed = (rawValue || "").trim();
-            if (!trimmed) {
-                return;
-            }
-
-            // The QR code encodes a JSON payload (see generate_qr_code()
-            // in app.py). Anything that isn't parseable JSON with an
-            // id_number is simply not a valid appointment QR code.
-            let payload;
-            try {
-                payload = JSON.parse(trimmed);
-            } catch (err) {
-                setQrStatus("invalid");
-                clearAppointmentDetails();
-                return;
-            }
-
-            const idNumber = payload && payload.id_number;
+            // The QR code now contains nothing but the id_number as
+            // plain text - just trim it and use it directly. (It used
+            // to be a JSON payload with name/email/date/etc., but all
+            // of that was ever used for was pulling out id_number
+            // anyway; everything shown in the panel comes from a fresh
+            // database lookup in /api/checkin, not from the QR code.)
+            const idNumber = (rawValue || "").trim();
             if (!idNumber) {
                 setQrStatus("invalid");
                 clearAppointmentDetails();
@@ -595,6 +705,10 @@
                 displayAppointmentDetails(result.appointment);
 
                 fetchStationStatus();  // reflect the check-in on the left panel right away
+
+                // Automatically bring up the reservation modal 10 seconds
+                // after a QR code is scanned.
+                setTimeout(openReserveModal, 10000);
             } catch (err) {
                 console.error("Could not reach /api/checkin:", err);
                 setQrStatus("invalid");
@@ -742,8 +856,6 @@
             // case any other stylesheet rule ever competes with the class.
             tabPanelIndividual.style.display = isIndividual ? "block" : "none";
             tabPanelGroup.style.display = !isIndividual ? "block" : "none";
-
-            hideConfirmation();
         }
 
         if (tabBtnIndividual) {
@@ -768,40 +880,78 @@
         const groupStationChecklist = document.getElementById("group-station-checklist");
         const groupStationHint = document.getElementById("group-station-hint");
 
-        const ALL_STATIONS = [
-            "Station 1", "Station 2", "Station 3", "Station 4", "Station 5",
-            "Station 6", "Station 7", "Station 8", "Station 9", "Station 10",
+        // Kept in sync with /api/stations for the currently selected
+        // group location (see refreshAllStationsList()) - this default
+        // is just a placeholder shown before that first fetch completes.
+        let ALL_STATIONS = [
+            { station_no: "Station 1", is_closed: false },
+            { station_no: "Station 2", is_closed: false },
+            { station_no: "Station 3", is_closed: false },
+            { station_no: "Station 4", is_closed: false },
+            { station_no: "Station 5", is_closed: false },
+            { station_no: "Station 6", is_closed: false },
+            { station_no: "Station 7", is_closed: false },
+            { station_no: "Station 8", is_closed: false },
+            { station_no: "Station 9", is_closed: false },
+            { station_no: "Station 10", is_closed: false },
         ];
+
+        async function refreshAllStationsList() {
+            const location = groupLocationSelect ? groupLocationSelect.value : "";
+            if (!location) {
+                return;
+            }
+            try {
+                const params = new URLSearchParams({ location });
+                const response = await fetch(`/api/stations?${params.toString()}`, { cache: "no-store" });
+                const result = await response.json();
+                if (result.success && Array.isArray(result.stations)) {
+                    ALL_STATIONS = result.stations;
+                    renderGroupStationCheckboxes(null);
+                } else {
+                    console.error("Failed to load stations:", result.message);
+                }
+            } catch (err) {
+                console.error("Could not reach /api/stations:", err);
+            }
+        }
 
         function setGroupStationHint(text) {
             if (groupStationHint) groupStationHint.textContent = text;
         }
 
-        // Always renders all 10 stations as checkboxes — the grid itself
-        // never disappears. `stationsAvailability` is either a map of
-        // { "Station 1": "vacant" | "reserved", ... } from the server, or
-        // null (meaning we don't know availability yet / the chosen slot
-        // is invalid), in which case every checkbox is shown but locked.
+        // Always renders every station configured for the selected
+        // location as checkboxes — the grid itself never disappears.
+        // `stationsAvailability` is either a map of
+        // { "Station 1": "vacant" | "reserved" | "closed", ... } from the
+        // server, or null (meaning we don't know availability yet / the
+        // chosen slot is invalid), in which case each checkbox falls back
+        // to its own is_closed flag from the stations table (still
+        // showing/disabling closed stations even before a slot is picked).
         function renderGroupStationCheckboxes(stationsAvailability) {
             groupStationChecklist.innerHTML = "";
-            ALL_STATIONS.forEach(function (stationName) {
+            ALL_STATIONS.forEach(function (station) {
+                const stationName = station.station_no;
                 const isLocked = stationsAvailability === null;
-                const status = isLocked ? "vacant" : (stationsAvailability[stationName] || "vacant");
-                const isReserved = !isLocked && status !== "vacant";
+                const status = isLocked
+                    ? (station.is_closed ? "closed" : "vacant")
+                    : (stationsAvailability[stationName] || "vacant");
+                const isUnavailable = status !== "vacant";
 
                 const label = document.createElement("label");
                 label.className = "group-station-checkbox" +
-                    (isReserved ? " is-disabled" : "") +
-                    (isLocked ? " is-locked" : "");
+                    (isUnavailable ? " is-disabled" : "") +
+                    (isLocked && status !== "closed" ? " is-locked" : "");
 
                 const input = document.createElement("input");
                 input.type = "checkbox";
                 input.value = stationName;
                 input.name = "group_station";
-                input.disabled = isReserved || isLocked;
+                input.disabled = isUnavailable || (isLocked && status !== "closed");
 
                 const span = document.createElement("span");
-                span.textContent = stationName + (isReserved ? " (Reserved)" : "");
+                const suffix = status === "closed" ? " (Closed)" : (isUnavailable ? " (Reserved)" : "");
+                span.textContent = stationName + suffix;
 
                 label.appendChild(input);
                 label.appendChild(span);
@@ -834,7 +984,7 @@
 
             try {
                 const params = new URLSearchParams({ date, location, start_time: startTime, end_time: endTime });
-                const response = await fetch(`/api/group-station-availability?${params.toString()}`);
+                const response = await fetch(`/api/group-station-availability?${params.toString()}`, { cache: "no-store" });
                 const result = await response.json();
 
                 if (response.ok && result.success) {
@@ -854,9 +1004,15 @@
         // visible right away, before any date/time has been chosen.
         renderGroupStationCheckboxes(null);
 
-        [groupDateInput, groupLocationSelect, groupStartInput, groupEndInput].forEach(function (el) {
+        [groupDateInput, groupStartInput, groupEndInput].forEach(function (el) {
             if (el) el.addEventListener("change", refreshGroupStationAvailability);
         });
+        if (groupLocationSelect) {
+            groupLocationSelect.addEventListener("change", async function () {
+                await refreshAllStationsList();
+                refreshGroupStationAvailability();
+            });
+        }
 
         function getSelectedGroupStations() {
             return Array.from(
@@ -870,42 +1026,73 @@
 
         const btnGroupDone = document.getElementById("btn-group-done");
         if (btnGroupDone) {
+            let isProcessingGroup = false; // guards against double-clicks re-firing this handler
             btnGroupDone.addEventListener("click", async function () {
-
-                const selectedStations = getSelectedGroupStations();
-
-                const payload = {
-                    group_representative: document.getElementById("group_representative").value.trim(),
-                    purpose:              document.getElementById("group_purpose").value.trim(),
-                    gsfe_email:           document.getElementById("group_gsfe_email").value.trim(),
-                    date:                 groupDateInput.value,
-                    location:             groupLocationSelect.value,
-                    start_time:           groupStartInput.value,
-                    end_time:             groupEndInput.value,
-                    stations:             selectedStations,
-                };
-
-                for (const key of ["group_representative", "purpose", "gsfe_email", "date", "location", "start_time", "end_time"]) {
-                    if (!payload[key]) {
-                        showConfirmation(false, "Please fill in all required fields before submitting.");
-                        return;
-                    }
-                }
-
-                if (selectedStations.length === 0) {
-                    showConfirmation(false, "Please select at least one station to reserve.");
-                    return;
-                }
-
-                const slotError = validateAppointmentSlot(payload.date, payload.start_time, payload.end_time);
-                if (slotError) {
-                    showConfirmation(false, slotError);
-                    return;
-                }
-
-                showConfirmation(null, "Submitting your group appointment, please wait...");
+                // If the user double-clicks "Done", the browser queues the
+                // second click event while alert()/confirm() is blocking
+                // the first one. Without this guard, that queued click
+                // re-runs this whole handler the instant "OK" is
+                // dismissed - making the same pop-up appear to come back
+                // right after being closed. Ignore any click that comes
+                // in while we're still handling a previous one.
+                if (isProcessingGroup) return;
+                isProcessingGroup = true;
 
                 try {
+                    const selectedStations = getSelectedGroupStations();
+
+                    const payload = {
+                        group_representative: document.getElementById("group_representative").value.trim(),
+                        purpose:              document.getElementById("group_purpose").value.trim(),
+                        gsfe_email:           document.getElementById("group_gsfe_email").value.trim(),
+                        date:                 groupDateInput.value,
+                        location:             groupLocationSelect.value,
+                        start_time:           groupStartInput.value,
+                        end_time:             groupEndInput.value,
+                        stations:             selectedStations,
+                    };
+
+                    for (const key of ["group_representative", "purpose", "gsfe_email", "date", "location", "start_time", "end_time"]) {
+                        if (!payload[key]) {
+                            alert("Please fill in all required fields before submitting.");
+                            return;
+                        }
+                    }
+
+                    if (selectedStations.length === 0) {
+                        alert("Please select at least one station to reserve.");
+                        return;
+                    }
+
+                    // Email domain validation (Gmail/GSFE addresses only)
+                    if (!isAllowedEmailDomain(payload.gsfe_email)) {
+                        alert(`Only @${ALLOWED_EMAIL_DOMAIN} email addresses are accepted for reservations. Please enter a valid @${ALLOWED_EMAIL_DOMAIN} address.`);
+                        return;
+                    }
+
+                    const slotError = validateAppointmentSlot(payload.date, payload.start_time, payload.end_time);
+                    if (slotError) {
+                        alert(slotError);
+                        return;
+                    }
+
+                    // All fields are complete and valid - confirm the details
+                    // with the user before actually submitting.
+                    const confirmMessage =
+                        "Please review your group reservation details:\n\n" +
+                        `Group Representative: ${payload.group_representative}\n` +
+                        `Purpose: ${payload.purpose}\n` +
+                        `Email: ${payload.gsfe_email}\n` +
+                        `Date: ${payload.date}\n` +
+                        `Time: ${payload.start_time} - ${payload.end_time}\n` +
+                        `Location: ${payload.location}\n` +
+                        `Stations: ${selectedStations.join(", ")}\n\n` +
+                        "Are you sure you want to submit this reservation?";
+
+                    if (!window.confirm(confirmMessage)) {
+                        return; // user chose Cancel - do not submit
+                    }
+
                     const response = await fetch("/submit-group-appointment", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -915,14 +1102,16 @@
                     const result = await response.json();
 
                     if (response.ok && result.success) {
-                        showConfirmation(
-                            true,
+                        alert(
                             `Group appointment confirmed! Reference No: ${result.group_id} ` +
                             `(${result.stations.join(", ")}). ` +
                             (result.email_sent
                                 ? "A confirmation email with QR codes for each station has been sent to the group's GSFE email."
                                 : "However, the confirmation email could not be sent — please contact the system administrator.")
                         );
+                        if (result.email_sent) {
+                            alert("Please check your email for your reservation details.");
+                        }
                         document.getElementById("group-appointment-form").reset();
                         setGroupStationHint(
                             "Fill in Date, Location, Start Time, and End Time above to see available stations."
@@ -930,10 +1119,15 @@
                         renderGroupStationCheckboxes(null);
                         fetchStationStatus();  // reflect the new bookings right away
                     } else {
-                        showConfirmation(false, result.message || "Failed to schedule the group appointment. Please try again.");
+                        alert(result.message || "Failed to schedule the group appointment. Please try again.");
                     }
                 } catch (err) {
-                    showConfirmation(false, "Could not connect to the server. Please check your connection and try again.");
+                    alert("Could not connect to the server. Please check your connection and try again.");
+                } finally {
+                    // Always release the guard, whether we returned early
+                    // on a validation failure or finished the fetch, so
+                    // the next legitimate click still works.
+                    isProcessingGroup = false;
                 }
             });
         }
@@ -946,48 +1140,17 @@
                     "Fill in Date, Location, Start Time, and End Time above to see available stations."
                 );
                 renderGroupStationCheckboxes(null);
-                hideConfirmation();
             });
         }
 
-        // -------------------------------------------------------
-        // CONFIRMATION BANNER HELPERS
-        // status: true = success, false = error, null = pending/info
-        // -------------------------------------------------------
+        const ALLOWED_EMAIL_DOMAIN = "gsfe.tupcavite.edu.ph";
 
-        function showConfirmation(status, message) {
-            const banner = document.getElementById("confirmation-banner");
-            if (!banner) {
-                return;
-            }
-            banner.textContent = message;
-            banner.classList.remove("confirmation-success", "confirmation-error", "confirmation-pending");
-
-            if (status === true) {
-                banner.classList.add("confirmation-success");
-            } else if (status === false) {
-                banner.classList.add("confirmation-error");
-            } else {
-                banner.classList.add("confirmation-pending");
-            }
-            banner.style.display = "block";
+        function isAllowedEmailDomain(email) {
+            if (!email) return false;
+            const match = /^[^\s@]+@([^\s@]+)$/.exec(email.trim());
+            if (!match) return false;
+            return match[1].toLowerCase() === ALLOWED_EMAIL_DOMAIN;
         }
-
-        function hideConfirmation() {
-            const banner = document.getElementById("confirmation-banner");
-            if (!banner) {
-                return;
-            }
-            banner.style.display = "none";
-        }
-
-        // -------------------------------------------------------
-        // BUSINESS HOURS VALIDATION (client-side)
-        // Reservations are only allowed Monday-Friday, 8:00 AM -
-        // 5:00 PM. This mirrors the authoritative check the server
-        // performs in /submit-appointment - this copy just gives
-        // the user immediate feedback without a round-trip.
-        // -------------------------------------------------------
 
         const BUSINESS_START_MIN = 8 * 60;       // 8:00 AM in minutes-from-midnight
         const BUSINESS_END_MIN   = 17 * 60;      // 5:00 PM in minutes-from-midnight
@@ -1033,38 +1196,69 @@
 
         const btnDone = document.getElementById("btn-done");
         if (btnDone) {
+            let isProcessingIndividual = false; // guards against double-clicks re-firing this handler
             btnDone.addEventListener("click", async function () {
-
-                const payload = {
-                    first_name:  document.getElementById("first_name").value.trim(),
-                    last_name:   document.getElementById("last_name").value.trim(),
-                    mi:          document.getElementById("mi").value.trim(),
-                    gsfe_email:  document.getElementById("gsfe_email").value.trim(),
-                    date:        document.getElementById("appt_date").value,
-                    station_no:  document.getElementById("station_no").value,
-                    location:    document.getElementById("appt_location").value,
-                    start_time:  document.getElementById("start_time").value,
-                    end_time:    document.getElementById("end_time").value,
-                };
-
-                // Basic client-side validation
-                for (const key in payload) {
-                    if (!payload[key]) {
-                        showConfirmation(false, "Please fill in all required fields before submitting.");
-                        return;
-                    }
-                }
-
-                // Business-hours validation (weekdays, 8:00 AM - 5:00 PM only)
-                const slotError = validateAppointmentSlot(payload.date, payload.start_time, payload.end_time);
-                if (slotError) {
-                    showConfirmation(false, slotError);
-                    return;
-                }
-
-                showConfirmation(null, "Submitting your appointment, please wait...");
+                // If the user double-clicks "Done", the browser queues the
+                // second click event while alert()/confirm() is blocking
+                // the first one. Without this guard, that queued click
+                // re-runs this whole handler the instant "OK" is
+                // dismissed - making the same pop-up appear to come back
+                // right after being closed. Ignore any click that comes
+                // in while we're still handling a previous one.
+                if (isProcessingIndividual) return;
+                isProcessingIndividual = true;
 
                 try {
+                    const payload = {
+                        first_name:  document.getElementById("first_name").value.trim(),
+                        last_name:   document.getElementById("last_name").value.trim(),
+                        mi:          document.getElementById("mi").value.trim(),
+                        gsfe_email:  document.getElementById("gsfe_email").value.trim(),
+                        date:        document.getElementById("appt_date").value,
+                        station_no:  document.getElementById("station_no").value,
+                        location:    document.getElementById("appt_location").value,
+                        start_time:  document.getElementById("start_time").value,
+                        end_time:    document.getElementById("end_time").value,
+                    };
+
+                    // Basic client-side validation
+                    for (const key in payload) {
+                        if (!payload[key]) {
+                            alert("Please fill in all required fields before submitting.");
+                            return;
+                        }
+                    }
+
+                    // Email domain validation (Gmail/GSFE addresses only)
+                    if (!isAllowedEmailDomain(payload.gsfe_email)) {
+                        alert(`Only @${ALLOWED_EMAIL_DOMAIN} email addresses are accepted for reservations. Please enter a valid @${ALLOWED_EMAIL_DOMAIN} address.`);
+                        return;
+                    }
+
+                    // Business-hours validation (weekdays, 8:00 AM - 5:00 PM only)
+                    const slotError = validateAppointmentSlot(payload.date, payload.start_time, payload.end_time);
+                    if (slotError) {
+                        alert(slotError);
+                        return;
+                    }
+
+                    // All fields are complete and valid - confirm the details
+                    // with the user before actually submitting.
+                    const middleInitial = payload.mi ? payload.mi + ". " : "";
+                    const confirmMessage =
+                        "Please review your reservation details:\n\n" +
+                        `Name: ${payload.first_name} ${middleInitial}${payload.last_name}\n` +
+                        `Email: ${payload.gsfe_email}\n` +
+                        `Date: ${payload.date}\n` +
+                        `Time: ${payload.start_time} - ${payload.end_time}\n` +
+                        `Location: ${payload.location}\n` +
+                        `Station: ${payload.station_no}\n\n` +
+                        "Are you sure you want to submit this reservation?";
+
+                    if (!window.confirm(confirmMessage)) {
+                        return; // user chose Cancel - do not submit
+                    }
+
                     const response = await fetch("/submit-appointment", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -1074,20 +1268,27 @@
                     const result = await response.json();
 
                     if (response.ok && result.success) {
-                        showConfirmation(
-                            true,
+                        alert(
                             `Appointment confirmed! Reference No: ${result.id_number}. ` +
                             (result.email_sent
                                 ? "A confirmation email with your QR code has been sent to your GSFE email."
                                 : "However, the confirmation email could not be sent — please contact the system administrator.")
                         );
+                        if (result.email_sent) {
+                            alert("Please check your email for your reservation details.");
+                        }
                         document.getElementById("appointment-form").reset();
                         fetchStationStatus();  // reflect the new booking right away
                     } else {
-                        showConfirmation(false, result.message || "Failed to schedule the appointment. Please try again.");
+                        alert(result.message || "Failed to schedule the appointment. Please try again.");
                     }
                 } catch (err) {
-                    showConfirmation(false, "Could not connect to the server. Please check your connection and try again.");
+                    alert("Could not connect to the server. Please check your connection and try again.");
+                } finally {
+                    // Always release the guard, whether we returned early
+                    // on a validation failure or finished the fetch, so
+                    // the next legitimate click still works.
+                    isProcessingIndividual = false;
                 }
             });
         }
@@ -1096,22 +1297,60 @@
         if (btnClear) {
             btnClear.addEventListener("click", function () {
                 document.getElementById("appointment-form").reset();
-                hideConfirmation();
             });
+        }
+
+        // -------------------------------------------------------
+        // AVAILABILITY STATUS PANEL - FIXED HEIGHT
+        // The left panel's height is pinned to exactly how much
+        // vertical space is available in the current browser window
+        // (main-content's rendered height, minus its own padding),
+        // rather than letting it grow/shrink with the number of
+        // stations or with the right panel's content. The stations
+        // grid then scrolls internally within that fixed height via
+        // .stations-scroll.
+        // -------------------------------------------------------
+        function setAvailabilityPanelHeight() {
+            const statusCard = document.querySelector(".status-card");
+            const mainContent = document.querySelector(".main-content");
+            if (!statusCard || !mainContent) return;
+
+            const mcStyles = getComputedStyle(mainContent);
+            const paddingTop = parseFloat(mcStyles.paddingTop) || 0;
+            const paddingBottom = parseFloat(mcStyles.paddingBottom) || 0;
+
+            const availableHeight = mainContent.clientHeight - paddingTop - paddingBottom;
+            statusCard.style.height = Math.max(availableHeight, 250) + "px";
         }
 
         // -------------------------------------------------------
         // INIT
         // -------------------------------------------------------
         renderDateTime();
+        fetchLocations();                   // populate the location dropdowns from the database
         fetchStationStatus();               // initial load from the database
+        setAvailabilityPanelHeight();       // size the left panel to the current window
         setInterval(renderDateTime, 1000);
         setInterval(fetchStationStatus, 15000);  // refresh availability every 15 seconds
+        setInterval(fetchLocations, 60000);      // pick up location changes every minute
+        window.addEventListener("resize", setAvailabilityPanelHeight);  // re-fix the height whenever the window is resized
+
+        // Automatically open the "Schedule an Appointment" modal as soon
+        // as the dashboard finishes loading.
+        openReserveModal();
 
         // Re-fetch immediately when the viewer switches location
         const dashboardLocationSelect = document.getElementById("dashboard-location-select");
         if (dashboardLocationSelect) {
             dashboardLocationSelect.addEventListener("change", fetchStationStatus);
+        }
+
+        // Refresh the individual reservation form's Station No. list
+        // whenever its Location changes, so it always reflects the
+        // stations table for that location.
+        const apptLocationSelect = document.getElementById("appt_location");
+        if (apptLocationSelect) {
+            apptLocationSelect.addEventListener("change", refreshIndividualStations);
         }
     </script>
 </body>

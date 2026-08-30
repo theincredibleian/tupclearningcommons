@@ -1,7 +1,9 @@
 import calendar as calendar_module
 import io
 import json
+import os
 import re
+import secrets
 import smtplib
 from datetime import datetime, time as time_cls, timedelta
 from email.mime.image import MIMEImage
@@ -10,11 +12,42 @@ from email.mime.text import MIMEText
 
 import mysql.connector
 import qrcode
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
 from db_config import DB_CONFIG, EMAIL_CONFIG
 
 app = Flask(__name__, template_folder="templates")
+
+# ==========================================================
+# ADMIN AUTHENTICATION
+# ==========================================================
+# Bug fix: the admin system had no authentication at all - "/" just
+# redirected straight to "/dashboard", and every route (including
+# destructive ones like deleting a station or restricting a student)
+# was open to anyone who could reach the URL. This adds a session-based
+# login gate. Set a real password via an environment variable before
+# deploying:
+#   Windows (cmd):        set TUPCLC_ADMIN_PASSWORD=your-password
+#   Windows (PowerShell):  $env:TUPCLC_ADMIN_PASSWORD="your-password"
+#   macOS/Linux:            export TUPCLC_ADMIN_PASSWORD=your-password
+ADMIN_PASSWORD = os.environ.get("TUPCLC_ADMIN_PASSWORD", "1234")
+
+# Flask needs this to sign the session cookie. Falls back to a random
+# key (which just means everyone's logged out each time the server
+# restarts) if TUPCLC_SECRET_KEY isn't set.
+app.secret_key = os.environ.get("TUPCLC_SECRET_KEY") or secrets.token_hex(32)
+
+
+@app.before_request
+def require_login():
+    """
+    Blocks every route except the login page itself and static files
+    until the session has been marked logged in via the / (login) route.
+    """
+    if request.endpoint in ("login", "static") or request.endpoint is None:
+        return None
+    if not session.get("logged_in"):
+        return redirect(url_for("login"))
 
 # ==========================================================
 # STATION / LOCATION CONFIG
@@ -185,6 +218,37 @@ def ensure_schema(cursor, conn):
     )
     conn.commit()
 
+    # GROUP RESERVATIONS (kiosk's "Group Reservation" tab).
+    # Bug fix: the kiosk system's submit_group_appointment() has always
+    # written to reservation_type/group_id/group_representative/purpose,
+    # but nothing ever created those columns, so every group booking
+    # failed with an "Unknown column" database error. Added here (and
+    # mirrored in both schema.sql files) so a fresh database gets them
+    # automatically, and existing databases get them the next time this
+    # runs. `ADD COLUMN IF NOT EXISTS` requires MariaDB 10.0.2+ / MySQL
+    # 8.0.29+; if you're on an older server, run schema.sql's ALTER
+    # TABLE statements by hand instead.
+    #
+    # first_name/last_name are also relaxed to allow NULL: a group
+    # booking only collects a single "group representative" name, not
+    # per-station first/last names, so those columns don't apply to
+    # group rows.
+    cursor.execute(
+        """
+        ALTER TABLE appointments
+            ADD COLUMN IF NOT EXISTS reservation_type VARCHAR(20) NOT NULL DEFAULT 'individual',
+            ADD COLUMN IF NOT EXISTS group_id VARCHAR(30) NULL,
+            ADD COLUMN IF NOT EXISTS group_representative VARCHAR(150) NULL,
+            ADD COLUMN IF NOT EXISTS purpose VARCHAR(255) NULL,
+            MODIFY first_name VARCHAR(100) NULL,
+            MODIFY last_name VARCHAR(100) NULL
+        """
+    )
+    cursor.execute(
+        "ALTER TABLE appointments ADD INDEX IF NOT EXISTS idx_group_id (group_id)"
+    )
+    conn.commit()
+
 
 def normalize_station_label(raw_station):
     """DB may store an appointment's station_no as an int (1..10) or as
@@ -210,6 +274,30 @@ def get_locations(cursor):
     return [row["name"] for row in cursor.fetchall()]
 
 
+def get_default_location(cursor):
+    """Returns the first configured location (by creation order), or
+    None if no locations exist yet. Used as the fallback wherever a
+    request doesn't specify ?location= explicitly - this used to fall
+    back to the hardcoded LOCATION_LIST[0] ("Main Learning Commons"),
+    so renaming or removing that particular location broke every route
+    that relied on the default (e.g. loading the dashboard fresh,
+    before it had a chance to pick a location from /api/locations)."""
+    cursor.execute("SELECT name FROM locations ORDER BY id ASC LIMIT 1")
+    row = cursor.fetchone()
+    return row["name"] if row else None
+
+
+def get_all_station_numbers(cursor):
+    """Returns every distinct station_no configured across ALL
+    locations, sorted numerically (Station 1, Station 2, ... first,
+    anything unnumbered last). Used to seed dropdowns/filters from the
+    database instead of the hardcoded STATION_LIST seed constant."""
+    cursor.execute("SELECT DISTINCT station_no FROM stations")
+    names = [row["station_no"] for row in cursor.fetchall()]
+    names.sort(key=_station_sort_key)
+    return names
+
+
 def get_stations_for_location(cursor, location):
     """Returns [{"station_no":..., "is_closed":...}, ...] for one
     location, ordered the way they should be displayed/added-to."""
@@ -223,10 +311,17 @@ def get_stations_for_location(cursor, location):
 def compute_station_statuses(cursor, conn, location):
     """
     Builds the live status for every configured station at `location`:
-    "closed" (manually closed via Manage Stations), "vacant",
-    "reserved", or "occupied" - derived from today's appointments plus
-    each station's persisted is_closed flag. Returns a dict keyed by
+    "closed" (manually closed via Manage Stations - individually via
+    the Close button, or in bulk via Close All), "vacant", "reserved",
+    or "occupied" - derived from today's appointments plus each
+    station's persisted is_closed flag. Returns a dict keyed by
     station_no: {"status", "start_time", "end_time", "is_closed"}.
+
+    NOTE: stations are only ever closed manually now. There used to
+    also be an automatic "closed outside 8:00 AM-5:00 PM / on
+    weekends" rule layered on top of this, but that hardcoded
+    schedule has been removed - admins now have full control via the
+    Close / Reopen / Close All / Open All actions on Manage Stations.
     """
     expire_stale_reservations(cursor, conn)
 
@@ -294,7 +389,7 @@ def generate_id_number(cursor):
     prefix = f"LC-{date_str}-"
 
     cursor.execute(
-        "SELECT id_number FROM appointments WHERE id_number LIKE %s ORDER BY id DESC LIMIT 1",
+        "SELECT id_number FROM appointments WHERE id_number LIKE %s ORDER BY id DESC LIMIT 1 FOR UPDATE",
         (prefix + "%",),
     )
     row = cursor.fetchone()
@@ -373,6 +468,21 @@ def _format_time(t):
     """Formats a time object as '8:00 AM' style text for the UI."""
     formatted = t.strftime("%I:%M %p")
     return formatted.lstrip("0") if formatted[0] == "0" else formatted
+
+
+def _display_name(appt):
+    """
+    Builds a display name for an appointments row, whether it's an
+    individual booking (first_name/mi/last_name) or a group booking
+    (first_name/last_name are NULL; group_representative is used
+    instead). Falls back gracefully if a row somehow has neither.
+    """
+    if appt.get("first_name") and appt.get("last_name"):
+        mi = f"{appt['mi']}. " if appt.get("mi") else ""
+        return f"{appt['first_name']} {mi}{appt['last_name']}".replace("  ", " ").strip()
+    if appt.get("group_representative"):
+        return f"{appt['group_representative']} (Group)"
+    return "Unknown"
 
 
 # ==========================================================
@@ -482,7 +592,25 @@ TUPC Learning Commons
 # LOGIN
 @app.route("/", methods=["GET", "POST"])
 def login():
-    return redirect(url_for("dashboard"))
+    if session.get("logged_in"):
+        return redirect(url_for("dashboard"))
+
+    error = None
+    if request.method == "POST":
+        submitted_password = request.form.get("password", "")
+        if submitted_password == ADMIN_PASSWORD:
+            session["logged_in"] = True
+            return redirect(url_for("dashboard"))
+        error = "Incorrect password."
+
+    return render_template("login.html", error=error)
+
+
+# LOGOUT
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 # DASHBOARD
@@ -502,6 +630,10 @@ def scheduling():
 def login_management():
     return render_template("login-management.html", active_page="login-management")
 
+@app.route("/upcoming-appointments")
+def upcoming_appointments():
+    return render_template("upcoming-appointments.html", active_page="upcoming-appointments")
+
 @app.route("/ongoing-sessions")
 def ongoing_sessions():
     return render_template("ongoing-sessions.html", active_page="ongoing-sessions")
@@ -517,7 +649,7 @@ def _serialize_appointment_row(row):
     start_t = _to_time(row["start_time"])
     end_t = _to_time(row["end_time"])
     station_label = normalize_station_label(row["station_no"])
-    middle_initial = f"{row['mi']}. " if row.get("mi") else ""
+    display_name = _display_name(row)
 
     return {
         "id_number": row["id_number"],
@@ -525,8 +657,10 @@ def _serialize_appointment_row(row):
         "mi": row["mi"],
         "last_name": row["last_name"],
         "gsfe_email": row["gsfe_email"],
-        "full_name": f"{row['first_name']} {middle_initial}{row['last_name']}",
-        "name_sort": f"{row['last_name']} {row['first_name']}".lower(),
+        "reservation_type": row.get("reservation_type", "individual"),
+        "group_representative": row.get("group_representative"),
+        "full_name": display_name,
+        "name_sort": display_name.lower(),
         "date": date_val.strftime("%B %d, %Y") if hasattr(date_val, "strftime") else date_val,
         "date_sort": date_val.isoformat() if hasattr(date_val, "isoformat") else str(date_val),
         "start_time": _format_time(start_t),
@@ -557,7 +691,8 @@ def ongoing_sessions_data():
         cursor.execute(
             """
             SELECT id_number, first_name, last_name, mi, gsfe_email,
-                   date, station_no, location, start_time, end_time, status
+                   date, station_no, location, start_time, end_time, status,
+                   reservation_type, group_representative
             FROM appointments
             WHERE status = %s
             ORDER BY date ASC, start_time ASC
@@ -601,7 +736,8 @@ def appointment_history_data():
         cursor.execute(
             """
             SELECT id_number, first_name, last_name, mi, gsfe_email,
-                   date, station_no, location, start_time, end_time, status
+                   date, station_no, location, start_time, end_time, status,
+                   reservation_type, group_representative
             FROM appointments
             ORDER BY date DESC, start_time DESC
             """
@@ -625,17 +761,113 @@ def appointment_history_data():
             conn.close()
 
 
-# REAL-TIME STATION STATUS (polled by dashboard.html)
-@app.route("/api/station-status")
-def station_status():
-    location = request.args.get("location", LOCATION_LIST[0])
-
+# UPCOMING APPOINTMENTS DATA (polled by upcoming-appointments.html)
+# Every appointment that hasn't been completed or expired yet - i.e.
+# still "reserved" or currently "occupied" - across all stations and
+# locations. Sorted soonest-first (date, then start time).
+@app.route("/api/upcoming-appointments")
+def upcoming_appointments_data():
     conn = None
     cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         ensure_schema(cursor, conn)
+        expire_stale_reservations(cursor, conn)
+
+        cursor.execute(
+            """
+            SELECT id_number, first_name, last_name, mi, gsfe_email,
+                   date, station_no, location, start_time, end_time, status,
+                   reservation_type, group_representative
+            FROM appointments
+            WHERE status NOT IN (%s, %s)
+            ORDER BY date ASC, start_time ASC
+            """,
+            (STATUS_COMPLETED, STATUS_EXPIRED),
+        )
+        rows = cursor.fetchall()
+
+        appointments = [_serialize_appointment_row(row) for row in rows]
+
+        return jsonify({"success": True, "appointments": appointments})
+
+    except mysql.connector.Error as db_err:
+        return jsonify({"success": False, "message": f"Database error: {db_err}"}), 500
+
+    except Exception as e:
+        return jsonify({"success": False, "message": f"An unexpected error occurred: {e}"}), 500
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None:
+            conn.close()
+
+
+# REMOVE / CANCEL A RESERVATION (Upcoming Appointments tab's "Remove
+# Reservation" button in the details overlay). Deletes the row outright
+# rather than flipping its status, since a cancelled reservation isn't
+# a real "completed"/"expired" outcome worth keeping in the history.
+# Appointments that have already ended (completed/expired) can't be
+# removed this way - use the existing history record instead.
+@app.route("/api/appointments/cancel", methods=["DELETE"])
+def cancel_appointment():
+    data = request.get_json(silent=True) or {}
+    id_number = data.get("id_number")
+
+    if not id_number:
+        return jsonify({"success": False, "message": "id_number is required."}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("SELECT status FROM appointments WHERE id_number = %s", (id_number,))
+        appt = cursor.fetchone()
+
+        if appt is None:
+            return jsonify({"success": False, "message": "Appointment not found."}), 404
+
+        if appt["status"] in (STATUS_COMPLETED, STATUS_EXPIRED):
+            return jsonify({
+                "success": False,
+                "message": "This appointment has already ended and can no longer be removed.",
+            }), 400
+
+        cursor.execute("DELETE FROM appointments WHERE id_number = %s", (id_number,))
+        conn.commit()
+
+        return jsonify({"success": True, "message": "Reservation removed."})
+
+    except mysql.connector.Error as db_err:
+        return jsonify({"success": False, "message": f"Database error: {db_err}"}), 500
+
+    except Exception as e:
+        return jsonify({"success": False, "message": f"An unexpected error occurred: {e}"}), 500
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None:
+            conn.close()
+
+
+# REAL-TIME STATION STATUS (polled by dashboard.html)
+@app.route("/api/station-status")
+def station_status():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        ensure_schema(cursor, conn)
+
+        location = request.args.get("location") or get_default_location(cursor)
+        if not location:
+            return jsonify({"success": False, "message": "No locations are configured yet."}), 404
 
         computed = compute_station_statuses(cursor, conn, location)
 
@@ -678,8 +910,6 @@ def station_status():
 # "(station_no) start_time - end_time" on the relevant day cell.
 @app.route("/api/calendar-status")
 def calendar_status():
-    location = request.args.get("location", LOCATION_LIST[0])
-
     now = datetime.now()
     try:
         year = int(request.args.get("year", now.year))
@@ -697,6 +927,10 @@ def calendar_status():
         cursor = conn.cursor(dictionary=True)
         ensure_schema(cursor, conn)
         expire_stale_reservations(cursor, conn)
+
+        location = request.args.get("location") or get_default_location(cursor)
+        if not location:
+            return jsonify({"success": False, "message": "No locations are configured yet."}), 404
 
         first_day = datetime(year, month, 1).date()
         last_day_num = calendar_module.monthrange(year, month)[1]
@@ -788,12 +1022,13 @@ def false_appointments():
 
         cursor.execute(
             """
-            SELECT first_name, last_name, mi, gsfe_email,
+            SELECT MAX(first_name) AS first_name, MAX(last_name) AS last_name,
+                   MAX(mi) AS mi, gsfe_email,
                    COUNT(*) AS strikes,
                    MAX(date) AS last_date
             FROM appointments
             WHERE status = %s
-            GROUP BY gsfe_email, first_name, last_name, mi
+            GROUP BY gsfe_email
             ORDER BY strikes DESC, last_date DESC
             """,
             (STATUS_EXPIRED,),
@@ -943,14 +1178,16 @@ def unrestrict_student():
 # STATION LIST WITH LIVE STATUS (polled by manage-stations.html)
 @app.route("/api/manage-stations")
 def manage_stations_status():
-    location = request.args.get("location", LOCATION_LIST[0])
-
     conn = None
     cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         ensure_schema(cursor, conn)
+
+        location = request.args.get("location") or get_default_location(cursor)
+        if not location:
+            return jsonify({"success": False, "message": "No locations are configured yet."}), 404
 
         computed = compute_station_statuses(cursor, conn, location)
 
@@ -1012,6 +1249,59 @@ def set_station_closed():
             "station_no": station_no,
             "location": location,
             "is_closed": closed,
+        })
+
+    except mysql.connector.Error as db_err:
+        return jsonify({"success": False, "message": f"Database error: {db_err}"}), 500
+
+    except Exception as e:
+        return jsonify({"success": False, "message": f"An unexpected error occurred: {e}"}), 500
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None:
+            conn.close()
+
+
+# CLOSE / REOPEN *ALL* STATIONS AT A LOCATION - bulk version of the
+# single-station Close/Reopen button above. Used by the "Close All" /
+# "Open All" buttons on Manage Stations, e.g. to shut everything down
+# for a holiday or a scheduled maintenance window, or to bring
+# everything back at once - now that stations are only ever closed
+# manually (no more automatic hour-based closing), this is the fast
+# way to do that for every station instead of one at a time.
+@app.route("/api/stations/close-all", methods=["POST"])
+def set_all_stations_closed():
+    data = request.get_json(silent=True) or {}
+    location = data.get("location")
+    closed = bool(data.get("closed"))
+
+    if not location:
+        return jsonify({"success": False, "message": "location is required."}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        ensure_schema(cursor, conn)
+
+        cursor.execute("SELECT id FROM locations WHERE name = %s", (location,))
+        if not cursor.fetchone():
+            return jsonify({"success": False, "message": "Location not found."}), 404
+
+        cursor.execute(
+            "UPDATE stations SET is_closed = %s WHERE location = %s",
+            (1 if closed else 0, location),
+        )
+        conn.commit()
+
+        return jsonify({
+            "success": True,
+            "location": location,
+            "is_closed": closed,
+            "updated": cursor.rowcount,
         })
 
     except mysql.connector.Error as db_err:
@@ -1223,20 +1513,81 @@ def remove_location():
             conn.close()
 
 
+# RENAME A LOCATION (also updates its stations + any appointments
+# already booked under the old name, so history/scheduling/dashboard
+# all keep working under the new name).
+@app.route("/api/locations/rename", methods=["POST"])
+def rename_location():
+    data = request.get_json(silent=True) or {}
+    old_name = (data.get("old_name") or "").strip()
+    new_name = (data.get("new_name") or "").strip()
+
+    if not old_name or not new_name:
+        return jsonify({"success": False, "message": "old_name and new_name are required."}), 400
+
+    if old_name == new_name:
+        return jsonify({"success": True, "name": new_name})
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        ensure_schema(cursor, conn)
+
+        cursor.execute("SELECT id FROM locations WHERE name = %s", (old_name,))
+        if not cursor.fetchone():
+            return jsonify({"success": False, "message": "Location not found."}), 404
+
+        cursor.execute("SELECT id FROM locations WHERE name = %s", (new_name,))
+        if cursor.fetchone():
+            return jsonify({"success": False, "message": "That location name is already in use."}), 400
+
+        cursor.execute("UPDATE locations SET name = %s WHERE name = %s", (new_name, old_name))
+        cursor.execute("UPDATE stations SET location = %s WHERE location = %s", (new_name, old_name))
+        cursor.execute("UPDATE appointments SET location = %s WHERE location = %s", (new_name, old_name))
+        conn.commit()
+
+        return jsonify({"success": True, "name": new_name})
+
+    except mysql.connector.Error as db_err:
+        return jsonify({"success": False, "message": f"Database error: {db_err}"}), 500
+
+    except Exception as e:
+        return jsonify({"success": False, "message": f"An unexpected error occurred: {e}"}), 500
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None:
+            conn.close()
+
+
 # DETAILED STATUS PAGE (more information about each station)
 @app.route("/more-information", methods=["GET", "POST"])
 @app.route("/detailed-status", methods=["GET", "POST"])
 def detailed_status():
-    return render_template(
-        "detailed_status.html",
-        stations=STATION_LIST,
-        locations=LOCATION_LIST,
-    )
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        ensure_schema(cursor, conn)
+
+        return render_template(
+            "detailed_status.html",
+            stations=get_all_station_numbers(cursor),
+            locations=get_locations(cursor),
+        )
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None:
+            conn.close()
 
 # DETAILED TIMELINE STATUS DATA (polled by detailed_status.html)
 @app.route("/api/timeline-status")
 def timeline_status():
-    location = request.args.get("location", LOCATION_LIST[0])
     station_no = request.args.get("station_no")
 
     conn = None
@@ -1244,13 +1595,19 @@ def timeline_status():
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+        ensure_schema(cursor, conn)
+
+        location = request.args.get("location") or get_default_location(cursor)
+        if not location:
+            return jsonify({"success": False, "message": "No locations are configured yet."}), 404
 
         expire_stale_reservations(cursor, conn)
 
         today = datetime.now().date()
         query = """
             SELECT id_number, first_name, last_name, mi, gsfe_email,
-                   date, station_no, location, start_time, end_time, status
+                   date, station_no, location, start_time, end_time, status,
+                   group_representative
             FROM appointments
             WHERE date = %s AND location = %s
             """
@@ -1312,7 +1669,7 @@ def timeline_status():
                 "status": status,
                 "start_time": _format_time(start),
                 "end_time": _format_time(end),
-                "name": f"{appt['first_name']} {appt['mi']}. {appt['last_name']}",
+                "name": _display_name(appt),
             })
 
         return jsonify({
@@ -1384,6 +1741,35 @@ def submit_appointment():
                 "success": False,
                 "message": f"{station_label} is currently closed and not accepting reservations.",
             }), 400
+
+        # Bug fix: this endpoint used to INSERT without checking whether the
+        # station was already booked for the requested window, so the same
+        # station/time could be double-booked. Same overlap rule used by the
+        # kiosk system's get_station_availability(): existing.start_time <
+        # requested.end_time AND existing.end_time > requested.start_time.
+        expire_stale_reservations(cursor, conn)
+        cursor.execute(
+            """
+            SELECT station_no
+            FROM appointments
+            WHERE date = %s
+              AND location = %s
+              AND status IN (%s, %s)
+              AND start_time < %s
+              AND end_time > %s
+            """,
+            (data["date"], data["location"], STATUS_RESERVED, STATUS_OCCUPIED,
+             data["end_time"], data["start_time"]),
+        )
+        already_taken = any(
+            normalize_station_label(row["station_no"]) == station_label
+            for row in cursor.fetchall()
+        )
+        if already_taken:
+            return jsonify({
+                "success": False,
+                "message": f"{station_label} was just reserved by someone else for that time slot. Please pick a different station or time.",
+            }), 409
 
         id_number = generate_id_number(cursor)
 
@@ -1473,7 +1859,8 @@ def checkin():
         cursor.execute(
             """
             SELECT id_number, first_name, last_name, mi, date,
-                   station_no, location, start_time, end_time, status
+                   station_no, location, start_time, end_time, status,
+                   group_representative
             FROM appointments
             WHERE id_number = %s
             """,
@@ -1503,6 +1890,7 @@ def checkin():
             "first_name": appt["first_name"],
             "mi": appt["mi"],
             "last_name": appt["last_name"],
+            "display_name": _display_name(appt),
             "date": appt["date"].strftime("%B %d, %Y") if hasattr(appt["date"], "strftime") else appt["date"],
             "start_time": _format_time(_to_time(appt["start_time"])),
             "end_time": _format_time(_to_time(appt["end_time"])),
@@ -1610,4 +1998,8 @@ def checkin():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # host="0.0.0.0" makes this reachable from other devices on the same
+    # WiFi/LAN (e.g. a tablet), not just this machine. Uses port 5001 so
+    # it can run alongside the kiosk system (port 5000) on the same
+    # machine at the same time.
+    app.run(host="0.0.0.0", port=5001, debug=False)

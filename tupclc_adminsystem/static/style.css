@@ -1,4 +1,4 @@
-/* Kiosk System Style Sheet */
+/* Admin System Style Sheet */
 
 /* GENERAL */
 
@@ -14,6 +14,19 @@ body{
     background-position: center;
     background-repeat: no-repeat;
     background-attachment: fixed;
+}
+
+/* Used on the Appointment History / Upcoming Appointments / Ongoing
+   Sessions pages so the history-container can be sized to exactly
+   fill the remaining viewport height (navbar + tabs stay their
+   natural size; the container grows to fill the rest, and its
+   internal list scrolls instead of the whole page). */
+body.history-page{
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    box-sizing:border-box;
+    overflow:hidden;
 }
 
 /* ================= LOGIN PAGE ================= */
@@ -870,10 +883,10 @@ h4 {
 /* ================= LOGIN MANAGEMENT ================= */
 
 .history-tabs{
-    flex:1;
+    flex:0 0 auto;
     margin-top: 20px;
-    margin-bottom: -10px;
-    margin-left: 20px;
+    margin-bottom: -15px;
+    margin-left: 17px;
     margin-right: 20px;
 }
 
@@ -893,7 +906,6 @@ h4 {
     color:#000;
     font:600 13px Poppins, Arial, sans-serif;
     cursor:pointer;
-    margin-right:3px;
 }
 
 .tab-btn-right {
@@ -907,7 +919,21 @@ h4 {
     color:#000;
     font:600 13px Poppins, Arial, sans-serif;
     cursor:pointer;
-    margin-left:3px;
+}
+
+.tab-btn-middle {
+    flex:1 1 auto;
+    min-width:0;
+    box-sizing:border-box;
+    height:34px;
+    border:2px solid #000000;
+    border-radius:20px;
+    background:white;
+    color:#000;
+    font:600 13px Poppins, Arial, sans-serif;
+    cursor:pointer;
+    margin-left:7px;
+    margin-right:7px;
 }
 
 .active-tab{
@@ -924,15 +950,30 @@ h4 {
     margin-left:3px;
 }
 
-.history-container{
-    margin:10px 15px 20px 15px;
+/* The middle tab needs a margin on both sides (unlike left/right,
+   which only need one); this wins over the shared .active-tab rule
+   above via specificity, without changing the left/right tabs. */
+.tab-btn-middle.active-tab{
+    margin-right:3px;
+}
 
-    padding:15px;
+.history-container{
+    margin:25px 20px 20px 20px;
+
+    padding:20px;
 
     background:#e5e5e5;
 
     border:2px solid black;
     border-radius:20px;
+
+    box-sizing:border-box;
+
+    flex:1 1 auto;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
 }
 
 .history-top{
@@ -941,7 +982,9 @@ h4 {
     justify-content:space-between;
     align-items:center;
 
-    margin-bottom:10px;
+    margin-bottom:0px;
+
+    flex:0 0 auto;
 }
 
 .history-top h1{
@@ -958,9 +1001,11 @@ h4 {
 
     gap:10px;
 
-    margin-bottom:15px;
+    margin-bottom:5px;
 
     font-size:14px;
+
+    flex:0 0 auto;
 }
 
 .history-filter select{
@@ -977,24 +1022,35 @@ h4 {
     font-weight:bold;
 }
 
+.history-table-wrapper{
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+}
+
 .history-table{
     width:100%;
-
+    margin-top:0px;
     border-collapse:collapse;
 }
 
 .history-table th{
     text-align:left;
 
-    padding:8px 5px;
+    padding:5px 0px;
 
     border-bottom:2px solid #ccc;
 
     font-size:13px;
+
+    position:sticky;
+    top:0;
+    background:#e5e5e5;
+    z-index:1;
 }
 
 .history-table td{
-    padding:8px 5px;
+    padding:5px 0px;
 
     border-bottom:1px solid #ddd;
 

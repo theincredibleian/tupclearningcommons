@@ -25,7 +25,7 @@
             <a href="/manage-stations" class="navbar-menu-btn">Learning Commons</a>
             <a href="/scheduling" class="navbar-menu-btn">Scheduling</a>
             <a href="/login-management" class="navbar-menu-btn active">Login Management</a>
-            <a href="#" class="navbar-menu-btn">Account</a>
+            <a href="/logout" class="navbar-menu-btn">Log Out</a>
         </nav>
     </div>
 
@@ -35,6 +35,9 @@
 <div class="history-tabs" style="display:flex; gap:0;">
         <a href="/login-management" class="tab-link">
             <button class="tab-btn-left">Appointment History</button>
+        </a>
+        <a href="/upcoming-appointments" class="tab-link">
+            <button class="tab-btn-middle">Upcoming Appointments</button>
         </a>
         <a href="/ongoing-sessions" class="tab-link">
             <button class="tab-btn-right active-tab">Ongoing Sessions</button>
@@ -60,6 +63,7 @@
                 <th>Start Time</th>
                 <th>Location</th>
                 <th>Station No.</th>
+                <th>Status</th>
                 <th></th>
             </tr>
         </thead>
@@ -154,7 +158,7 @@
             if (sessions.length === 0) {
                 const row = document.createElement("tr");
                 const cell = document.createElement("td");
-                cell.colSpan = 6;
+                cell.colSpan = 7;
                 cell.textContent = "No ongoing sessions right now.";
                 cell.style.textAlign = "center";
                 cell.style.color = "#888";
@@ -189,6 +193,10 @@
                 const stationCell = document.createElement("td");
                 stationCell.textContent = session.station_no;
 
+                const statusCell = document.createElement("td");
+                statusCell.textContent = STATUS_LABELS[session.status] || session.status;
+                statusCell.className = statusClass(session.status);
+
                 const actionCell = document.createElement("td");
                 actionCell.className = "table-buttons";
                 const btn = document.createElement("button");
@@ -204,6 +212,7 @@
                 row.appendChild(startCell);
                 row.appendChild(locationCell);
                 row.appendChild(stationCell);
+                row.appendChild(statusCell);
                 row.appendChild(actionCell);
                 sessionsBody.appendChild(row);
             });
